@@ -93,6 +93,29 @@ label.f input,label.f select,label.f textarea{display:block;width:100%;margin-to
 .seg{display:flex;background:var(--soft);border-radius:10px;padding:3px;margin-bottom:12px}
 .seg button{flex:1;border:0;background:none;padding:8px 4px;border-radius:8px;font-weight:700;font-size:13px;color:var(--muted);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+/* week calendar */
+.wk{display:grid;gap:10px;margin-bottom:14px}
+@media (min-width:900px){.wk{grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}}
+.wkday{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.wkday.today{border-color:var(--pink);box-shadow:0 0 0 1px var(--pink)}
+.wkh{display:flex;align-items:baseline;gap:8px}
+.wkh .dw{font-weight:800;font-style:italic;font-size:13px;letter-spacing:.5px;color:var(--ink)}
+.wkh .dw.we{color:var(--pink)}
+.wkh .dn{font-weight:800;font-size:13px;color:var(--muted)}
+.wkc{display:block;width:100%;text-align:left;border:1px solid var(--line);background:var(--soft);border-radius:10px;padding:8px 10px;cursor:pointer;color:var(--ink);font:inherit;min-height:44px}
+.wkc:hover{border-color:var(--pink)}
+.wkc .tm{display:block;font-size:12px;font-weight:800;color:var(--pink)}
+.wkc b{display:block;font-size:14px;line-height:1.25;overflow-wrap:anywhere}
+.wkc .sub{display:block;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.wkadd{width:100%;margin-top:auto;min-height:40px}
+.wkbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.rcp{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.rcp:last-child{border-bottom:0}
+.rcp input{width:20px;height:20px;flex:none;accent-color:var(--pink)}
+.rcp .nm{flex:1;min-width:0;overflow-wrap:anywhere}
+.mailprev{width:100%;height:420px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.steps{margin:0 0 12px;padding-left:20px}
+.steps li{margin-bottom:6px;font-size:14px;line-height:1.4}
 .pinputs input{padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
 .empty{text-align:center;padding:26px 10px;color:var(--muted)}
 .att{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)}
@@ -381,13 +404,14 @@ const DEFAULT = {
     promo:{active:false, ends:""},
     classTypes: DEFAULT_TYPES,
     plans:[], instructors:[],
+    mail:{url:"", key:"", sent:{}},
     categories:["Rent","Equipment","Utilities","Marketing","Supplies","Merchandise","Other"]
   },
   members:[], sessions:[], expenses:[], rentals:[], items:[], sales:[]
 };
 const LISTS = ["members","sessions","expenses","rentals","items","sales"];
 let S = structuredClone(DEFAULT);
-let tab = "dash", peopleSeg = "member", peopleQ = "", classTypeFilter = "";
+let tab = "dash", peopleSeg = "member", peopleQ = "", classTypeFilter = "", classView = "", calWeek = "";
 let docRef = null, saveTimer = null, pendingSave = false, readOnly = false;
 
 /* ---------- member numbers ---------- */
@@ -411,6 +435,7 @@ function normalize(d){
   if(!st.categories.includes("Merchandise")) st.categories.splice(Math.max(0,st.categories.length-1),0,"Merchandise");
   st.plans = (st.plans||[]).map(p=>Object.assign({promoPrice:""},p));
   st.instructors = (st.instructors||[]).map(i=>Object.assign({pct:"",min:"",contact:"",notes:"",types:[]},i));
+  st.mail = Object.assign({url:"", key:"", sent:{}}, ds.mail||{}); if(!st.mail.sent || typeof st.mail.sent!=="object") st.mail.sent = {};
   o.settings = st;
   o.members = o.members.map(m=>Object.assign({type:"member"},m));
   o.members.forEach(m=>{ if(m.type==="member" && !m.memberNo) m.memberNo = nextMemberNo(o.members); });
@@ -1529,10 +1554,16 @@ function statusToggles(s){
 }
 
 function vSessions(){
+  if(!classView) classView = lsGet("fw-cview") || "week";
+  const viewSeg = `<div class="seg" role="group" aria-label="Classes view"><button type="button" data-cview="week" aria-pressed="${classView==="week"}">Week calendar</button><button type="button" data-cview="list" aria-pressed="${classView==="list"}">List and pay</button></div>`;
+  if(classView==="week") return `<div class="row between" style="margin-bottom:12px"><h2>Classes</h2><div class="row"><button class="btn lime" data-act="scan">Scan card</button><button class="btn" data-act="newSession">Add class</button></div></div>${viewSeg}${vWeek()}`;
+  return vSessionList(viewSeg);
+}
+function vSessionList(viewSeg){
   const r=periodRange();
   const list = S.sessions.filter(s=>inR(s.date,r) && (!classTypeFilter || s.typeId===classTypeFilter)).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   return `<div class="row between" style="margin-bottom:12px"><h2>Classes</h2><div class="row"><button class="btn lime" data-act="scan">Scan card</button><button class="btn" data-act="newSession">Add class</button></div></div>
-  ${periodBar()}
+  ${viewSeg}${periodBar()}
   <div class="row" style="margin-bottom:12px"><label class="small muted" for="ctf">Class type</label><select id="ctf" class="sel">${typeOptions(classTypeFilter,"All classes")}</select></div>
   ${list.length?list.map(s=>{
     const c=sessionCalc(s), n=(s.attendees||[]).length, ins=instr(s.instructorId);
@@ -1544,6 +1575,184 @@ function vSessions(){
       ${splitBar(c.inst,c.biz,c.pct)}
       ${c.mode==="pct"?`<div class="row" style="margin-top:8px"><label class="small muted" for="pct_${s.id}">Instructor %</label><input class="inl" type="number" min="0" max="100" id="pct_${s.id}" data-pct="${s.id}" value="${c.pct}"></div>`:""}
       <div class="row" style="margin-top:10px">${statusToggles(s)}<button class="btn sm ghost" data-act="editSession" data-id="${s.id}">Edit & attendance</button><button class="btn sm ghost" data-act="scanFor" data-id="${s.id}">Scan cards</button></div></div>`;}).join(""):`<div class="card empty">No classes in this period. Tap “Add class” to schedule one.</div>`}`;
+}
+
+/* ---------- week calendar (Sunday to Saturday, like the posted schedule) ---------- */
+const DOW = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+const sundayOf = iso => addDays(iso, -new Date(iso+"T00:00").getDay());
+const curWeek = () => { if(!calWeek) calWeek = sundayOf(todayISO()); return calWeek; };
+const weekSessions = ws => { const we=addDays(ws,6); return S.sessions.filter(s=>s.date>=ws && s.date<=we).sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||""))); };
+const weekLabel = ws => { const we=addDays(ws,6); return `${shortD(ws)} – ${shortD(we)}, ${we.slice(0,4)}`; };
+const fmtStamp = iso => { const d=new Date(iso); return isNaN(d) ? "" : d.toLocaleString("en-PH",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); };
+function vWeek(){
+  const ws=curWeek(), list=weekSessions(ws), today=todayISO(), cap=+S.settings.capacity||10;
+  const sent = S.settings.mail.sent[ws];
+  const days = DOW.map((dw,i)=>{
+    const d=addDays(ws,i), items=list.filter(s=>s.date===d);
+    const full = new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long",month:"long",day:"numeric"});
+    return `<div class="wkday${d===today?" today":""}"><div class="wkh"><span class="dw${i===0||i===6?" we":""}">${dw}</span><span class="dn">${shortD(d)}</span></div>
+      ${items.map(s=>{ const ins=instr(s.instructorId), n=(s.attendees||[]).length;
+        return `<button type="button" class="wkc" data-act="editSession" data-id="${s.id}"><span class="tm">${fmtTime(s.time)||"No time"}</span><b>${esc(typeName(s))}</b><span class="sub">${ins?esc(ins.name)+" · ":""}${n}/${cap} pax</span></button>`; }).join("")}
+      ${items.length?"":`<p class="small muted" style="margin:0">No class</p>`}
+      <button type="button" class="btn sm ghost wkadd" data-act="calAdd" data-date="${d}" aria-label="Add class on ${esc(full)}">+ Add class</button></div>`;
+  }).join("");
+  return `<div class="card" style="padding:12px">
+    <div class="row between">
+      <button type="button" class="btn sm ghost" data-act="calNav" data-v="-1" aria-label="Previous week">‹</button>
+      <b style="text-align:center;flex:1">${weekLabel(ws)}</b>
+      <button type="button" class="btn sm ghost" data-act="calNav" data-v="1" aria-label="Next week">›</button>
+    </div>
+    <div class="row" style="margin-top:10px;justify-content:center"><input type="date" data-calpick value="${ws}" aria-label="Go to any day"><button type="button" class="btn sm ghost" data-act="calNav" data-v="0">This week</button></div>
+  </div>
+  <div class="wkbar"><button type="button" class="btn lime" data-act="sendSched">Email schedule to members</button><button type="button" class="btn sm ghost" data-act="copyViber">Copy for Viber</button><button type="button" class="btn sm ghost" data-act="copyWeek">Copy last week</button></div>
+  <p class="small muted" style="margin:-4px 0 12px">${list.length} class${list.length===1?"":"es"} this week.${sent?` Emailed ${esc(fmtStamp(sent.at))} to ${sent.n} member${sent.n===1?"":"s"}.`:" Not emailed yet."}</p>
+  <div class="wk">${days}</div>`;
+}
+function copyLastWeek(){
+  const ws=curWeek(), prev=weekSessions(addDays(ws,-7)), cur=weekSessions(ws);
+  if(!prev.length){ toast("No classes last week to copy"); return; }
+  const add = prev.filter(p=>!cur.some(c=>c.date===addDays(p.date,7) && c.time===p.time && c.typeId===p.typeId))
+    .map(p=>({id:uid(), date:addDays(p.date,7), time:p.time, typeId:p.typeId, title:p.title||"", instructorId:p.instructorId, attendees:[], paidOut:false, instStatus:"present", pctOverride:""}));
+  if(!add.length){ toast("Last week's classes are already here"); return; }
+  if(!confirm(`Copy ${add.length} class${add.length===1?"":"es"} from last week into ${weekLabel(ws)}?`)) return;
+  S.sessions.push(...add); save(); render(); toast(`${add.length} class${add.length===1?"":"es"} copied`);
+}
+function schedDays(ws){
+  const list=weekSessions(ws);
+  return DOW.map((x,i)=>addDays(ws,i)).map(d=>({d, items:list.filter(s=>s.date===d)})).filter(x=>x.items.length);
+}
+const longDay = d => new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long",month:"short",day:"numeric"}).toUpperCase();
+function schedText(ws){
+  const cap=+S.settings.capacity||10;
+  return `FOOTWORK PH · CLASS SCHEDULE\n${weekLabel(ws)}\n\n` +
+    schedDays(ws).map(x=>longDay(x.d)+"\n"+x.items.map(s=>{ const i=instr(s.instructorId); return `• ${fmtTime(s.time)} – ${typeName(s)}${i?" ("+i.name+")":""}`; }).join("\n")).join("\n\n") +
+    `\n\nBook in advance before going to the studio. Max ${cap} per class.\nClass times subject to change.`;
+}
+function schedHtml(ws, note){
+  const cap=+S.settings.capacity||10, F="font-family:Arial,Helvetica,sans-serif;";
+  const rows = schedDays(ws).map(x=>`<tr><td colspan="3" style="${F}padding:16px 16px 6px;font-size:14px;font-weight:800;color:#E8157F;letter-spacing:.5px">${esc(longDay(x.d))}</td></tr>`+
+    x.items.map(s=>{ const i=instr(s.instructorId); return `<tr><td style="${F}padding:5px 8px 5px 16px;width:84px;font-size:14px;font-weight:700;color:#111;white-space:nowrap;vertical-align:top">${esc(fmtTime(s.time))}</td><td style="${F}padding:5px 8px;font-size:14px;font-weight:700;color:#111;vertical-align:top">${esc(typeName(s))}</td><td style="${F}padding:5px 16px 5px 8px;font-size:13px;color:#555;vertical-align:top">${i?esc(i.name):""}</td></tr>`; }).join("")).join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;padding:0;background:#f3f0f5">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f0f5"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:3px solid #FA1294;border-radius:14px;overflow:hidden">
+<tr><td style="${F}background:#111111;padding:22px 16px;text-align:center"><div style="font-size:30px;font-weight:900;font-style:italic;letter-spacing:1px"><span style="color:#ffffff">FOOT</span><span style="color:#FA1294">WORK</span> <span style="color:#B4FA2A">PH</span></div><div style="font-size:13px;font-weight:800;color:#B4FA2A;margin-top:6px;letter-spacing:2px">WEEKLY CLASS SCHEDULE</div><div style="font-size:17px;font-weight:700;color:#ffffff;margin-top:4px">${esc(weekLabel(ws))}</div></td></tr>
+${note?`<tr><td style="${F}padding:18px 16px 2px;font-size:15px;line-height:1.5;color:#222">${esc(note).replace(/\n/g,"<br>")}</td></tr>`:""}
+<tr><td style="padding:4px 0 12px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table></td></tr>
+<tr><td style="${F}background:#FA1294;padding:14px 16px;font-size:14px;line-height:1.45;font-weight:700;color:#ffffff;text-align:center">Please book in advance before going to the studio. Max ${cap} per class. Show your membership card at the counter for your points and perks.</td></tr>
+<tr><td style="${F}padding:14px 16px;font-size:12px;line-height:1.5;color:#555;text-align:center">Class times subject to change.<br>${esc(FWC_FOOT)}</td></tr>
+</table></td></tr></table></body></html>`;
+}
+function copyText(text, msg){
+  const ok=()=>toast(msg||"Copied"), bad=()=>toast("Can't copy on this browser");
+  try{ navigator.clipboard.writeText(text).then(ok,bad); }catch(e){ bad(); }
+}
+const EMAIL_RX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const mailReady = () => /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(S.settings.mail.url||"");
+async function mailPost(payload){
+  const r = await fetch(S.settings.mail.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(Object.assign({key:S.settings.mail.key}, payload))});
+  return r.json();
+}
+function sendSchedDlg(){
+  const ws=curWeek();
+  if(!weekSessions(ws).length){ toast("No classes this week yet. Plot the schedule first."); return; }
+  if(!mailReady()){
+    openDlg("Set up email first", `<p>Email sending is not set up yet. It takes about 5 minutes, one time only.</p>
+      <p class="small muted">While waiting, tap <b>Copy for Viber</b> to post the schedule in your members' community.</p>`,
+      {saveLabel:"Go to setup", onSave:()=>{ tab="settings"; setTimeout(()=>{ render(); const el=document.getElementById("mailSetup"); if(el) el.scrollIntoView(); },0); }});
+    return;
+  }
+  const byName=(a,b)=>a.name.localeCompare(b.name);
+  const act = S.members.filter(m=>m.type==="member" && !cardExpired(m)).sort(byName);
+  const withMail = act.filter(m=>EMAIL_RX.test((m.email||"").trim()));
+  const noMail = act.filter(m=>!EMAIL_RX.test((m.email||"").trim()));
+  const nons = S.members.filter(m=>m.type!=="member" && EMAIL_RX.test((m.email||"").trim())).sort(byName);
+  const rcp = (m,on) => `<label class="rcp"><input type="checkbox" data-rcp="${m.id}" ${on?"checked":""}><span class="nm"><b>${esc(m.name)}</b><br><span class="small muted">${esc(m.email.trim())}</span></span></label>`;
+  openDlg("Email schedule to members", `
+    <p style="margin:0 0 10px"><b>${esc(weekLabel(ws))}</b> · ${weekSessions(ws).length} classes</p>
+    <label class="f">Subject<input id="ms_subj" value="${esc("Footwork PH Class Schedule · "+weekLabel(ws))}"></label>
+    <label class="f">Short message (optional)<textarea id="ms_note" rows="3" placeholder="e.g. See you on the dance floor this week!"></textarea></label>
+    <h3 style="margin:6px 0 2px">Members (${withMail.length})</h3>
+    ${withMail.length?`<div class="row" style="margin:4px 0"><button type="button" class="btn sm ghost" id="ms_all">Tick all</button><button type="button" class="btn sm ghost" id="ms_none">Untick all</button></div>${withMail.map(m=>rcp(m,true)).join("")}`:`<p class="small muted">No active member has an email saved yet.</p>`}
+    ${noMail.length?`<p class="small muted" style="margin:8px 0 0">No email saved, so they won't get it: ${noMail.map(m=>esc(m.name)).join(", ")}. Add their email in Students.</p>`:""}
+    ${nons.length?`<details style="margin-top:10px"><summary class="small"><b>Also send to non-members (${nons.length})</b></summary>${nons.map(m=>rcp(m,false)).join("")}</details>`:""}
+    <details style="margin-top:12px"><summary class="small"><b>Preview email</b></summary><iframe class="mailprev" id="ms_prev" sandbox="" title="Email preview"></iframe></details>
+    <p class="small muted" style="margin:10px 0 0">Each person gets their own email from your studio Gmail, so no one sees the others' addresses.</p>`,
+  { saveLabel:"Send", onSave:()=>{
+      const ids=[...document.querySelectorAll("#dlgBody [data-rcp]:checked")].map(x=>x.dataset.rcp);
+      const to=[...new Set(ids.map(id=>(member(id)?.email||"").trim().toLowerCase()).filter(e=>EMAIL_RX.test(e)))];
+      if(!to.length){ toast("Tick at least one person"); return false; }
+      if(!navigator.onLine){ toast("You're offline. Connect to the internet first."); return false; }
+      const btn=document.getElementById("dlgSave"); btn.disabled=true; btn.textContent="Sending…";
+      const note=document.getElementById("ms_note").value.trim();
+      mailPost({to, subject:val("ms_subj")||("Footwork PH Class Schedule · "+weekLabel(ws)), html:schedHtml(ws,note), text:(note?note+"\n\n":"")+schedText(ws)})
+        .then(r=>{
+          if(!r || !r.ok) throw new Error((r&&r.error)||"Not sent");
+          S.settings.mail.sent[ws] = {at:new Date().toISOString(), n:r.sent};
+          save(); dlg.close();
+          toast(`Sent to ${r.sent} ${r.sent===1?"person":"people"}`+(r.failed&&r.failed.length?` · ${r.failed.length} failed`:""));
+        })
+        .catch(err=>{ btn.disabled=false; btn.textContent="Send"; toast("Not sent: "+(err&&err.message||"check your connection")); });
+      return false;
+    } });
+  const body=document.getElementById("dlgBody");
+  const setAll = on => withMail.forEach(m=>{ const c=body.querySelector(`[data-rcp="${m.id}"]`); if(c) c.checked=on; });
+  const a=document.getElementById("ms_all"), n=document.getElementById("ms_none");
+  if(a) a.onclick=()=>setAll(true); if(n) n.onclick=()=>setAll(false);
+  const drawPrev=()=>{ const f=document.getElementById("ms_prev"); if(f) f.srcdoc=schedHtml(ws, document.getElementById("ms_note").value.trim()); };
+  drawPrev(); document.getElementById("ms_note").oninput=drawPrev;
+  const upd=()=>{ const k=body.querySelectorAll("[data-rcp]:checked").length; document.getElementById("dlgSave").textContent = k?`Send to ${k}`:"Send"; };
+  body.onchange=upd; upd();
+}
+function mailScript(){
+  if(!S.settings.mail.key){ S.settings.mail.key = uid()+uid()+uid(); save(); }
+  return `// Footwork PH - schedule email sender
+// Runs on your studio Gmail. Free, up to 100 emails a day.
+const SECRET = "${S.settings.mail.key}";
+
+function doPost(e){
+  try{
+    const d = JSON.parse(e.postData.contents);
+    if(d.key !== SECRET) return out({ok:false, error:"Wrong key. Copy the setup script again."});
+    const to = (d.to || []).filter(function(x){ return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(x); }).slice(0, 100);
+    if(!to.length) return out({ok:false, error:"No valid emails"});
+    const left = MailApp.getRemainingDailyQuota();
+    if(to.length > left) return out({ok:false, error:"Daily limit reached. Only " + left + " emails left today."});
+    let sent = 0; const failed = [];
+    to.forEach(function(addr){
+      try{ MailApp.sendEmail({to:addr, subject:String(d.subject||"Footwork PH Class Schedule").slice(0,200), htmlBody:String(d.html||""), body:String(d.text||""), name:"Footwork PH"}); sent++; }
+      catch(err){ failed.push(addr); }
+    });
+    return out({ok:true, sent:sent, failed:failed, left:MailApp.getRemainingDailyQuota()});
+  }catch(err){ return out({ok:false, error:String(err)}); }
+}
+function doGet(){ return out({ok:true, left:MailApp.getRemainingDailyQuota()}); }
+function out(o){ return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+`;
+}
+function mailCard(){
+  const m=S.settings.mail, ok=mailReady();
+  return `<div class="card" id="mailSetup"><div class="row between" style="margin-bottom:6px"><h3>Email the class schedule</h3><span class="pill ${ok?"ok":""}">${ok?"Set up":"Not set up"}</span></div>
+    <p class="small muted" style="margin:0 0 10px">Members get the weekly schedule from your studio Gmail. Free, up to 100 emails a day. One-time setup:</p>
+    <ol class="steps">
+      <li>Tap <b>Copy setup script</b>.</li>
+      <li>Open <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com</a> signed in as your studio Gmail (fwork.ph@gmail.com). A new project opens.</li>
+      <li>Delete the sample code. Paste the script. Tap the save icon.</li>
+      <li>Tap <b>Deploy</b> › <b>New deployment</b>. Pick type <b>Web app</b>. Execute as: <b>Me</b>. Who has access: <b>Anyone</b>. Tap <b>Deploy</b>.</li>
+      <li>Allow access when Google asks. If it says "Google hasn't verified this app", tap <b>Advanced</b> then <b>Go to project</b>.</li>
+      <li>Copy the <b>Web app URL</b>. Paste it below, then tap <b>Test</b>.</li>
+    </ol>
+    <div class="row" style="margin-bottom:10px"><button type="button" class="btn sm" data-act="copyScript">Copy setup script</button></div>
+    <label class="f">Web app URL<input data-mailurl value="${esc(m.url)}" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="none" spellcheck="false" inputmode="url"></label>
+    <div class="row"><button type="button" class="btn sm ghost" data-act="mailTest">Test</button></div>
+    <p class="small muted" style="margin:10px 0 0">Keep the script private. It holds a secret key so only this app can send.</p></div>`;
+}
+function mailTest(){
+  if(!mailReady()){ toast("Paste the Web app URL first. It ends in /exec"); return; }
+  toast("Testing…");
+  fetch(S.settings.mail.url).then(r=>r.json()).then(r=>{
+    if(!r.ok) throw 0;
+    return mailPost({to:[]}).then(x=>{ if(x && /Wrong key/.test(x.error||"")) toast("Connected, but the key doesn't match. Copy the script again and redeploy."); else toast(`Connected. ${r.left} emails left today.`); });
+  }).catch(()=>toast("Can't reach it. Check the URL and that access is set to Anyone."));
 }
 
 const interestOpen = new Set();
@@ -1746,6 +1955,7 @@ function vSettings(){
     <label class="f">Studio name<input data-set="studioName" value="${esc(st.studioName)}"></label>
     <label class="f">Expense categories (comma-separated)<input data-set="categories" value="${esc(st.categories.join(", "))}"></label>
   </div>
+  ${mailCard()}
   ${syncCard()}`;
 }
 
@@ -1943,7 +2153,7 @@ function personDlg(m, type){
 function sessionDlg(s, preset){
   const isNew=!s;
   const pi = preset && preset.instructorId ? instr(preset.instructorId) : null;
-  s = s ? structuredClone(s) : {id:uid(), date:todayISO(), time:"18:00", typeId:(pi&&pi.types&&pi.types[0])||S.settings.classTypes[0]?.id||"", title:"", instructorId:(pi&&pi.id)||S.settings.instructors[0]?.id||"", attendees:[], paidOut:false, instStatus:"present", pctOverride:""};
+  s = s ? structuredClone(s) : {id:uid(), date:(preset&&preset.date)||todayISO(), time:"18:00", typeId:(pi&&pi.types&&pi.types[0])||S.settings.classTypes[0]?.id||"", title:"", instructorId:(pi&&pi.id)||S.settings.instructors[0]?.id||"", attendees:[], paidOut:false, instStatus:"present", pctOverride:""};
   const newNon = [];
   const drawSum = ()=>{ const c=sessionCalc(s); document.getElementById("s_sum").innerHTML = `<p class="small" style="margin:10px 0 0">${s.attendees.length}/${S.settings.capacity} pax · Sales <b>${peso(c.gross)}</b></p>${splitBar(c.inst,c.biz,c.pct)}`; };
   const drawAtt = ()=>{
@@ -2377,6 +2587,13 @@ function handleAct(b){
   if(a==="newSession") sessionDlg();
   else if(a==="editSession") sessionDlg(ses());
   else if(a==="schedFor") sessionDlg(null,{instructorId:id});
+  else if(a==="calAdd") sessionDlg(null,{date:b.dataset.date});
+  else if(a==="calNav"){ const v=+b.dataset.v; calWeek = v ? addDays(curWeek(),7*v) : sundayOf(todayISO()); render(); }
+  else if(a==="copyWeek") copyLastWeek();
+  else if(a==="copyViber"){ const ws=curWeek(); if(!weekSessions(ws).length) toast("No classes this week yet"); else copyText(schedText(ws),"Schedule copied. Paste it in Viber."); }
+  else if(a==="sendSched") sendSchedDlg();
+  else if(a==="copyScript") copyText(mailScript(),"Script copied");
+  else if(a==="mailTest") mailTest();
   else if(a==="setStatus"){ ses().instStatus=b.dataset.v; save(); toast(b.dataset.v==="absent"?"Marked absent":"Marked present"); reRender(); }
   else if(a==="setPaid"){ ses().paidOut=b.dataset.v==="1"; save(); toast(b.dataset.v==="1"?"Marked paid":"Marked pending"); reRender(); }
   else if(a==="newMember") personDlg(null,"member");
@@ -2413,6 +2630,7 @@ const view=document.getElementById("view");
 view.addEventListener("click", e=>{
   const go=e.target.closest("[data-go]"); if(go){ tab=go.dataset.go; render(); window.scrollTo(0,0); return; }
   const pe=e.target.closest("[data-pmode],[data-pnav]"); if(pe){ if(periodEvent(pe,"click")) render(); return; }
+  const cv=e.target.closest("[data-cview]"); if(cv){ classView=cv.dataset.cview; lsSet("fw-cview",classView); render(); return; }
   const sg=e.target.closest("[data-seg]"); if(sg){ peopleSeg=sg.dataset.seg; render(); return; }
   const b=e.target.closest("[data-act]"); if(b) handleAct(b);
 });
@@ -2420,6 +2638,8 @@ view.addEventListener("change", e=>{
   const t=e.target;
   if(t.dataset.pin){ if(periodEvent(t,"change")) render(); return; }
   if(t.id==="ctf"){ classTypeFilter=t.value; render(); return; }
+  if(t.hasAttribute("data-calpick")){ if(t.value){ calWeek=sundayOf(t.value); render(); } return; }
+  if(t.hasAttribute("data-mailurl")){ S.settings.mail.url=t.value.trim(); save(); render(); toast(mailReady()?"URL saved. Tap Test.":"That URL should end in /exec"); return; }
   if(t.hasAttribute("data-promo")){ S.settings.promo.active=t.checked; save(); render(); toast(t.checked?"Promo rates ON":"Regular rates ON"); return; }
   if(t.hasAttribute("data-promoends")){ S.settings.promo.ends=t.value; save(); render(); toast("Promo end saved"); return; }
   if(t.dataset.rate){ const [k,f]=t.dataset.rate.split("."); S.settings.rates[k][f]= f==="promo"&&t.value===""?"":Math.max(0,+t.value||0); save(); render(); toast("Rate saved"); return; }
