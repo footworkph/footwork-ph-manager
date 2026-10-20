@@ -532,6 +532,7 @@ function showGate(msg){
   document.getElementById("gateLogo").src = document.querySelector("header.top img").src;
   document.querySelector(".wrap").inert = true; document.querySelector("nav.tabs").inert = true;
   document.getElementById("gPass").value = "";
+  const ge = document.getElementById("gEmail"); if(ge && !ge.value) ge.value = STUDIO_EMAIL;
   gateMsg(msg||""); gateBusy(false); gate.hidden = false;
 }
 function hideGate(){
@@ -2019,8 +2020,13 @@ function render(){
   document.getElementById("studioTitle").textContent = S.settings.studioName || "Footwork PH";
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-current", b.dataset.tab===tab?"page":"false"));
   const v = {dash:vDash, sessions:vSessions, members:vMembers, instructors:vInstructors, rental:vRental, shop:vShop, expenses:vExpenses, settings:vSettings}[tab];
-  document.getElementById("view").innerHTML = v();
+  const wrong = sbUser && sbUser.email && sbUser.email.toLowerCase() !== STUDIO_EMAIL;
+  document.getElementById("view").innerHTML = (wrong ? `<div class="card" style="border:2px solid var(--pink);margin-bottom:14px">
+    <h3 style="margin:0 0 6px">⚠️ Wrong account</h3>
+    <p class="small" style="margin:0 0 10px">You're signed in as <b>${esc(sbUser.email)}</b>. Your studio records and online bookings are in <b>${STUDIO_EMAIL}</b>. Records saved here won't show on your other devices.</p>
+    <button type="button" class="btn sm" data-sb="out">Sign out and switch</button></div>` : "") + v();
 }
+const STUDIO_EMAIL = "fwork.ph@gmail.com";
 
 /* ---------- dialog ---------- */
 const dlg = document.getElementById("dlg");
