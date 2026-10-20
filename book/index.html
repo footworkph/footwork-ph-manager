@@ -107,7 +107,22 @@ input:focus{outline:2px solid var(--lime);outline-offset:1px}
       <div class="err" id="loginErr" hidden></div>
       <button class="btn pink block" id="loginBtn" type="submit">Log in</button>
     </form>
-    <p class="small muted" style="margin-top:14px">Not a member yet? Message our Facebook page <b style="color:var(--ink)">Footwork PH</b> to join and get priority booking.</p>
+    <div class="card" style="margin-top:16px">
+      <div style="font-weight:700;font-size:20px">Not a member yet?</div>
+      <p class="small muted">Book as a guest. Members get first pick, so guest booking opens 24 hours before each class.</p>
+      <button class="btn block" id="guestBtn" type="button" style="margin-top:12px">Book as a guest</button>
+    </div>
+  </section>
+
+  <!-- GUEST -->
+  <section id="guest" hidden>
+    <button class="btn ghost sm" id="gBack" type="button">‹ Back</button>
+    <h1 style="margin-top:14px">Book as a <span>guest</span></h1>
+    <p class="muted">Strictly by appointment. Members get first pick, so guest booking opens <b style="color:var(--ink)" id="gOpenH">24 hours</b> before each class and closes <b style="color:var(--ink)" id="gCutH">12 hours</b> before class.</p>
+    <div id="gMine"></div>
+    <div class="chips" id="gChips" role="group" aria-label="Filter by class" style="margin-top:12px"></div>
+    <div id="gList"></div>
+    <div id="gUpsell"></div>
   </section>
 
   <!-- APP -->
@@ -179,7 +194,7 @@ const dayLabel = d => dObj(d).toLocaleDateString("en-PH",{weekday:"long",month:"
 const todayISO = () => { const x=new Date(); x.setMinutes(x.getMinutes()-x.getTimezoneOffset()); return x.toISOString().slice(0,10); };
 const dayName = d => d===todayISO() ? "Today" : dObj(d).toLocaleDateString("en-PH",{weekday:"long"});
 
-function show(which){ $("loading").hidden = which!=="loading"; $("login").hidden = which!=="login"; $("app").hidden = which!=="app"; $("outBtn").hidden = which!=="app"; }
+function show(which){ $("loading").hidden = which!=="loading"; $("login").hidden = which!=="login"; $("app").hidden = which!=="app"; $("guest").hidden = which!=="guest"; $("outBtn").hidden = which!=="app"; }
 
 async function load(silent){
   if(!silent) show("loading");
@@ -357,12 +372,149 @@ $("loginForm").addEventListener("submit", async e=>{
   cred = {no, mob}; if($("remember").checked) lsSet(cred);
   load();
 });
+
+/* ---------- guest booking (non-members) ---------- */
+const GLS = "fwph-guest-bookings";
+let G = null, gType = "";
+const gGet = () => { try{ return JSON.parse(localStorage.getItem(GLS)||"[]"); }catch(e){ return []; } };
+const gSet = v => { try{ localStorage.setItem(GLS, JSON.stringify(v)); }catch(e){} };
+const GERR = Object.assign({}, ERR, {
+  members_only: "Members get first pick for this class. Guest booking opens 24 hours before class.",
+  not_agreed: "Please tick the box to agree to the studio rules.",
+  bad_details: "Please check your name, mobile number, email and Facebook name.",
+  too_many: "You already have 3 upcoming guest bookings. Please message our Facebook page.",
+  busy: "Lots of bookings right now. Please try again in a few minutes.",
+  already: "This mobile number already has a slot in this class."
+});
+const fmtWhen = iso => { const d = new Date(iso); return d.toLocaleDateString("en-PH",{weekday:"short",month:"short",day:"numeric"})+", "+d.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}); };
+function upsell(){
+  return `<div class="card" style="margin-top:18px;border-color:var(--lime);box-shadow:0 0 18px rgba(180,250,42,.18)">
+    <div style="font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-weight:900;font-style:italic;font-size:26px;line-height:1">Be a member for only <span style="color:var(--lime)">₱500</span></div>
+    <p class="small muted" style="margin:4px 0 8px">4 months of member privileges:</p>
+    <ul class="small" style="margin:0;padding-left:18px;line-height:1.6">
+      <li><b>Priority slot booking</b>: book anytime, before guests</li>
+      <li><b>₱50 off</b> every session</li>
+      <li>Earn points: <b>10 visits = 1 free session</b></li>
+      <li><b>Free class</b> on your birthday week</li>
+      <li>₱100 off studio rental (first hour) and 10% off workout gear</li>
+    </ul>
+    <p class="small" style="margin-top:10px">Message our Facebook page <b>Footwork PH</b> to join.</p></div>`;
+}
+async function loadGuest(silent){
+  if(!silent) show("loading");
+  const r = await rpc("fw_public_schedule", {});
+  if(!r.ok){ show("login"); loginErr(ERR.network); return; }
+  G = r; renderGuest(); show("guest");
+}
+function renderGuest(){
+  $("gOpenH").textContent = G.guestOpenHours+" hours"; $("gCutH").textContent = G.cutoffHours+" hours";
+  const mine = gGet().filter(b=>new Date(b.when) > new Date(Date.now()-3*3600e3));
+  gSet(mine);
+  $("gMine").innerHTML = mine.length ? `<h2>Your guest bookings</h2>`+mine.map(b=>`<div class="card" style="margin-bottom:10px"><div class="row"><div><div class="cn">${esc(b.cls)}</div><div class="co">${esc(fmtWhen(b.when))} · Ref ${esc(b.ref)}</div></div><button class="btn sm" data-gshow="${esc(b.ref)}">Show booking</button></div></div>`).join("") : "";
+  const types = [...new Set(G.sessions.map(s=>s.class))];
+  if(gType && !types.includes(gType)) gType="";
+  $("gChips").innerHTML = types.length>1 ? [`<button class="chip" aria-pressed="${!gType}" data-gtype="">All classes</button>`, ...types.map(t=>`<button class="chip" aria-pressed="${gType===t}" data-gtype="${esc(t)}">${esc(t)}</button>`)].join("") : "";
+  const list = G.sessions.filter(s=>!gType || s.class===gType);
+  if(!G.sessions.length){ $("gList").innerHTML = `<div class="empty card"><b>No classes posted yet</b>The class schedule will show here soon. Follow our Facebook page for updates.</div>`; }
+  else {
+    let html="", last="";
+    list.forEach(s=>{ if(s.date!==last){ html+=`<div class="day">${esc(dayName(s.date))}<span>${esc(dObj(s.date).toLocaleDateString("en-PH",{month:"short",day:"numeric"}))}</span></div>`; last=s.date; } html+=gCard(s); });
+    $("gList").innerHTML = html || `<div class="empty">No ${esc(gType)} classes in the next 2 weeks.</div>`;
+  }
+  $("gUpsell").innerHTML = upsell();
+}
+function gCard(s){
+  const left = Math.max(0, s.capacity - s.taken), pct = Math.min(100, Math.round(s.taken/s.capacity*100)), ft = fmtTime(s.time);
+  const opens = new Date(s.guest_opens_at).toLocaleString("en-PH",{weekday:"short",hour:"numeric",minute:"2-digit"});
+  let btn;
+  if(left<=0) btn = `<span class="pill bad">Full</span>`;
+  else if(!G.open) btn = `<span class="pill">Paused</span>`;
+  else if(s.guest_open) btn = `<button class="btn pink sm" data-gbook="${esc(s.id)}">Book</button>`;
+  else if(s.guest_soon) btn = `<span class="pill pink">Members first</span>`;
+  else btn = `<span class="pill">Booking closed</span>`;
+  return `<div class="cls">
+    <div class="tm">${ft.t}<small>${ft.ap}</small></div>
+    <div>
+      <div class="row"><div class="cn">${esc(s.class)}</div>${btn}</div>
+      ${s.coach?`<div class="co">with ${esc(s.coach)}</div>`:""}
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="small muted">${left>0?`${left} of ${s.capacity} slots left`:"No slots left"}${s.guest_soon&&left>0?` · Guest booking opens ${esc(opens)}`:""}</div>
+    </div></div>`;
+}
+function gBookSheet(s){
+  const ft = fmtTime(s.time);
+  openSheet(`<h3>Book as a guest</h3>
+    <p class="muted">${esc(s.class)} · ${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}${s.coach?` · ${esc(s.coach)}`:""}</p>
+    <form id="gForm" autocomplete="on">
+      <label for="gName">Full name</label><input type="text" id="gName" maxlength="80" autocomplete="name" required>
+      <label for="gMob">Mobile number</label><input type="tel" id="gMob" inputmode="tel" placeholder="09xx xxx xxxx" autocomplete="tel" required>
+      <label for="gFb">Facebook / Messenger name</label><input type="text" id="gFb" maxlength="80" required>
+      <label for="gEmail">Email (optional)</label><input type="text" id="gEmail" inputmode="email" maxlength="120" autocomplete="email">
+      <ul class="rules">
+        <li>Strictly by appointment. Your slot is <b>confirmed once you pay</b>.</li>
+        <li>First-timers sign a short waiver at the studio before class.</li>
+        <li>Late arrivals join the class where it is. The warm-up won't be repeated.</li>
+        <li>Aero Step: check your free step board before class starts.</li>
+        <li>The studio is not responsible for lost items.</li>
+      </ul>
+      <label class="check" style="margin-top:0;color:var(--ink)"><input type="checkbox" id="gAgree"> I agree to the studio rules</label>
+      <div class="err" id="gErr" hidden></div>
+      <button class="btn pink block" id="gGo" type="submit">Reserve my slot</button>
+    </form>
+    <button class="btn ghost block" style="margin-top:10px" data-close>Not now</button>`);
+  $("gForm").onsubmit = async e=>{
+    e.preventDefault();
+    const err = t => { $("gErr").textContent=t; $("gErr").hidden=false; };
+    const name=$("gName").value.trim(), mob=$("gMob").value.trim(), fb=$("gFb").value.trim(), em=$("gEmail").value.trim();
+    if(name.length<2) return err("Please type your full name.");
+    if(mob.replace(/\D/g,"").length<10) return err("Please type your full mobile number.");
+    if(fb.length<2) return err("Please type your Facebook or Messenger name.");
+    if(!$("gAgree").checked) return err(GERR.not_agreed);
+    $("gGo").disabled=true; $("gGo").innerHTML=`<span class="spin"></span>`;
+    const r = await rpc("fw_guest_book", {p_session:s.id, p_name:name, p_mobile:mob, p_email:em, p_fb:fb, p_agreed:true});
+    if(!r.ok){ err(GERR[r.error]||ERR.network); $("gGo").disabled=false; $("gGo").textContent="Reserve my slot"; if(["full","closed","already","no_session","members_only"].includes(r.error)) loadGuest(true); return; }
+    const when = s.date+"T"+s.time+":00+08:00";
+    const b = {ref:r.ref, cls:s.class, when, coach:s.coach, name};
+    gSet([...gGet().filter(x=>x.ref!==b.ref), b]);
+    loadGuest(true); gDone(b, true);
+  };
+}
+function gDone(b, fresh){
+  openSheet(`<p class="small" style="margin:0 0 4px;color:var(--lime);font-weight:700">📸 SCREENSHOT THIS PAGE</p>
+    <h3>${fresh?"Slot reserved!":"Your booking"}</h3>
+    <div class="kv"><b>Ref</b><span class="ref" style="font-size:28px">${esc(b.ref)}</span><b>Name</b><span>${esc(b.name)}</span><b>Class</b><span>${esc(b.cls)}</span><b>When</b><span>${esc(fmtWhen(b.when))}</span>${b.coach?`<b>Coach</b><span>${esc(b.coach)}</span>`:""}<b>Status</b><span><span class="pill warn">Waiting for payment</span></span></div>
+    <div class="rules" style="border-color:var(--pink)">
+      <div style="font-weight:700;margin-bottom:6px">Pay via GCash or Maya</div>
+      <div style="font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-weight:900;font-style:italic;font-size:30px;color:var(--lime);line-height:1">${esc(G.payNumber)}</div>
+      <div>Account name: <b>${esc(G.payName)}</b></div>
+      <button class="btn ghost sm" id="gCopy" type="button" style="margin-top:8px">Copy number</button>
+      <p class="small muted" style="margin-top:8px">${esc(G.rateNote)}</p>
+    </div>
+    <ol class="small" style="padding-left:18px;line-height:1.6;margin:10px 0">
+      <li>Pay your class fee to the number above.</li>
+      <li>Screenshot this booking and your payment receipt.</li>
+      <li>Send both to our Facebook page <b>Footwork PH</b>.</li>
+    </ol>
+    <p class="small muted">Your slot is confirmed once we verify your payment.</p>
+    ${upsell()}
+    <button class="btn block" style="margin-top:16px" data-close>Done</button>`);
+  $("gCopy").onclick = ()=>{ try{ navigator.clipboard.writeText(G.payNumber.replace(/\D/g,"")).then(()=>toast("Number copied")); }catch(e){ toast(G.payNumber); } };
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-gbook],[data-gshow],[data-gtype]"); if(!b || !G) return;
+  if(b.hasAttribute("data-gtype")){ gType=b.dataset.gtype; renderGuest(); return; }
+  if(b.dataset.gshow){ const x=gGet().find(y=>y.ref===b.dataset.gshow); if(x) gDone(x,false); return; }
+  const s = G.sessions.find(x=>x.id===b.dataset.gbook); if(s) gBookSheet(s);
+});
+$("guestBtn").onclick = ()=>{ history.replaceState(null,"","#guest"); loadGuest(); };
+$("gBack").onclick = ()=>{ history.replaceState(null,"",location.pathname); show("login"); };
 $("outBtn").onclick = ()=>{ cred=null; data=null; lsSet(null); $("mob").value=""; show("login"); };
 $("refreshBtn").onclick = ()=>{ load(true).then(()=>toast("Schedule updated")); };
-document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && cred && data) load(true); });
+document.addEventListener("visibilitychange", ()=>{ if(document.hidden) return; if(!$("guest").hidden && G) loadGuest(true); else if(cred && data) load(true); });
 
 cred = lsGet();
-if(cred && cred.no && cred.mob){ $("mno").value = cred.no; load(); } else show("login");
+if(location.hash==="#guest") loadGuest();
+else if(cred && cred.no && cred.mob){ $("mno").value = cred.no; load(); } else show("login");
 </script>
 </body>
 </html>

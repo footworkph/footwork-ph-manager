@@ -642,7 +642,7 @@ async function loadBookings(){
   if(!sb || !sbUser) return;
   try{
     const since = new Date(Date.now()-36*3600*1000).toISOString();
-    const r = await sb.from("fw_bookings").select("id,ref,class_id,class_name,starts_at,name,member_no,member_id,contact,status,pay_ref,proof_path,created_at")
+    const r = await sb.from("fw_bookings").select("id,ref,class_id,class_name,starts_at,name,member_no,member_id,contact,email,note,is_member,status,pay_ref,proof_path,created_at")
       .gte("starts_at", since).in("status",["pending","confirmed"]).order("starts_at");
     if(r.error) return;
     const before = JSON.stringify(BK); BK = r.data||[];
@@ -654,7 +654,7 @@ const bkWhen = b => { const d=new Date(b.starts_at); return d.toLocaleDateString
 function bookingsCard(){
   if(!sbUser) return "";
   const pend = BK.filter(b=>b.status==="pending"), conf = BK.filter(b=>b.status==="confirmed");
-  const row = b => `<li><div class="row between"><div style="min-width:0"><b>${esc(b.name)}</b> <span class="pill pink">${esc(b.member_no||"")}</span>
+  const row = b => `<li><div class="row between"><div style="min-width:0"><b>${esc(b.name)}</b> ${b.is_member?`<span class="pill pink">${esc(b.member_no||"")}</span>`:`<span class="pill">Guest</span><div class="small muted">${esc(b.contact||"")}${b.note?" · "+esc(String(b.note).replace(/^FB:\s*/,"FB: ")):""}</div>`}
      <div class="small">${esc(b.class_name||"Class")} · ${esc(bkWhen(b))}</div>
      <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${b.proof_path?"":" · No screenshot yet"}</div></div>
      <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Confirmed":"Waiting for payment"}</span></div>
@@ -662,11 +662,22 @@ function bookingsCard(){
      ${b.status==="pending"?`<button type="button" class="btn sm" data-act="bkConfirm" data-id="${b.id}">Paid · Confirm</button>`:`<button type="button" class="btn sm ghost" data-act="bkUnconfirm" data-id="${b.id}">Undo confirm</button>`}
      <button type="button" class="btn sm ghost" data-act="bkCancel" data-id="${b.id}">Cancel booking</button></div></li>`;
   return `<div class="card"><div class="row between"><h3 style="margin:0">Online bookings</h3><div class="row"><button type="button" class="btn sm ghost" data-act="bkCopy">Copy booking link</button><button type="button" class="btn sm ghost" data-act="bkRefresh" aria-label="Refresh bookings">↻</button></div></div>
-   <p class="small muted" style="margin:6px 0 10px">Members book with their Member ID and mobile number. Confirm each booking after you check the payment. Online booking closes 12 hours before class.</p>
+   <p class="small muted" style="margin:6px 0 10px">Members book anytime with their Member ID. Guests (non-members) can book from 24 hours before class. Confirm each booking after you check the payment. Confirming a guest saves them as a non-member. Online booking closes 12 hours before class.</p>
    ${pend.length?`<h3 style="margin:10px 0 6px">To confirm (${pend.length})</h3><ul class="list">${pend.map(row).join("")}</ul>`:`<p class="small muted" style="margin:6px 0">No bookings waiting for payment.</p>`}
    ${conf.length?`<details style="margin-top:10px"><summary class="small"><b>Confirmed (${conf.length})</b></summary><ul class="list">${conf.map(row).join("")}</ul></details>`:""}</div>`;
 }
+function guestToNonMember(b){
+  const digits = v => String(v||"").replace(/\D/g,"").slice(-10);
+  let m = S.members.find(x=>digits(x.contact) && digits(x.contact)===digits(b.contact));
+  if(!m){
+    m = {id:uid(), name:b.name, contact:b.contact||"", email:b.email||"", type:"nonmember", notes:`Booked online as guest (${b.ref})${b.note?" · "+b.note:""}`, startDate:todayISO()};
+    S.members.push(m); save();
+  }
+  return m.id;
+}
 async function bkSet(id, patch, msg){
+  const bk = BK.find(x=>x.id===id);
+  if(bk && !bk.is_member && patch.status==="confirmed" && !bk.member_id) patch.member_id = guestToNonMember(bk);
   const r = await sb.from("fw_bookings").update(Object.assign({updated_at:new Date().toISOString()}, patch)).eq("id", id);
   if(r.error){ toast("Couldn't update. Check your internet."); return; }
   toast(msg); await loadBookings(); render();
