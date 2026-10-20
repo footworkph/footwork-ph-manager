@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Book a Class · Footwork PH</title>
+<meta name="description" content="Footwork PH members: check the class schedule and book your slot.">
+<meta name="theme-color" content="#07070A">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@1,800;1,900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#07070A;--card:#13131A;--card2:#1B1B24;--line:#2A2A36;--ink:#F4F4F8;--muted:#A3A3B5;--pink:#FA1294;--lime:#B4FA2A;--warn:#FFC93C;--bad:#FF5A6E}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"Barlow Semi Condensed",Arial,sans-serif;font-size:16px;-webkit-tap-highlight-color:transparent}
+body{min-height:100vh;background:radial-gradient(600px 400px at 110% -10%,rgba(250,18,148,.22),transparent 60%),radial-gradient(500px 380px at -20% 30%,rgba(180,250,42,.10),transparent 60%),var(--bg)}
+.wrap{max-width:560px;margin:0 auto;padding:18px 16px calc(40px + env(safe-area-inset-bottom))}
+.brand{font-family:"Barlow Condensed","Arial Narrow",Arial,sans-serif;font-weight:900;font-style:italic;font-size:32px;white-space:nowrap;line-height:1;letter-spacing:.5px}
+.brand .w{color:var(--pink)} .brand .p{color:var(--lime)}
+.brand small{display:block;font-family:"Barlow Semi Condensed",Arial,sans-serif;font-style:normal;font-weight:700;font-size:11px;letter-spacing:5px;color:var(--muted);margin-top:4px}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px}
+h1{font-family:"Barlow Condensed","Arial Narrow",Arial,sans-serif;font-weight:900;font-style:italic;font-size:44px;line-height:.95;margin:6px 0 6px}
+h1 span{color:var(--pink);text-shadow:0 0 18px rgba(250,18,148,.6)}
+h2{font-family:"Barlow Condensed","Arial Narrow",Arial,sans-serif;font-weight:800;font-style:italic;font-size:24px;margin:22px 0 10px;letter-spacing:.5px}
+p{line-height:1.45;margin:6px 0}
+.muted{color:var(--muted)} .small{font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px}
+.neon{border:2px solid var(--pink);box-shadow:0 0 22px rgba(250,18,148,.25)}
+label{display:block;font-weight:700;font-size:14px;margin:14px 0 6px;color:#DADAE6}
+input[type=text],input[type=tel]{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:#0C0C12;color:var(--ink);font:600 18px "Barlow Semi Condensed",Arial,sans-serif}
+input:focus{outline:2px solid var(--lime);outline-offset:1px}
+.check{display:flex;gap:10px;align-items:center;font-weight:600;color:var(--muted);margin-top:12px;font-size:15px}
+.check input{width:20px;height:20px;accent-color:var(--pink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:14px;padding:14px 18px;font:700 17px "Barlow Semi Condensed",Arial,sans-serif;cursor:pointer;color:#0A0A0A;background:var(--lime);box-shadow:0 0 18px rgba(180,250,42,.35);text-decoration:none}
+.btn.pink{background:var(--pink);color:#fff;box-shadow:0 0 18px rgba(250,18,148,.45)}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);box-shadow:none}
+.btn.block{width:100%;margin-top:18px}
+.btn.sm{padding:9px 14px;font-size:15px;border-radius:11px;white-space:nowrap}
+.btn[disabled]{opacity:.45;cursor:default;box-shadow:none}
+.err{background:rgba(255,90,110,.12);border:1px solid rgba(255,90,110,.5);color:#FFC1C9;border-radius:12px;padding:10px 12px;margin-top:12px;font-weight:600}
+.hello{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:13px;font-weight:700;background:var(--card2);color:var(--muted);white-space:nowrap}
+.pill.pink{background:rgba(250,18,148,.16);color:#FF7CC0}
+.pill.lime{background:rgba(180,250,42,.14);color:var(--lime)}
+.pill.warn{background:rgba(255,201,60,.14);color:var(--warn)}
+.pill.bad{background:rgba(255,90,110,.14);color:var(--bad)}
+.tabs{display:flex;gap:8px;margin:18px 0 6px;background:var(--card);padding:5px;border-radius:14px;border:1px solid var(--line)}
+.tabs button{flex:1;border:0;background:transparent;color:var(--muted);font:700 16px "Barlow Semi Condensed",Arial,sans-serif;padding:10px;border-radius:10px;cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--pink);color:#fff}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:none;margin:0 -16px;padding-left:16px;padding-right:16px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;padding:8px 12px;font:700 15px "Barlow Semi Condensed",Arial,sans-serif;cursor:pointer;text-align:center;line-height:1.1}
+.chip small{display:block;font-weight:600;font-size:12px;color:var(--muted)}
+.chip[aria-pressed=true]{border-color:var(--lime);background:rgba(180,250,42,.12);color:var(--lime)}
+.chip[aria-pressed=true] small{color:var(--lime)}
+.day{font-family:"Barlow Condensed","Arial Narrow",Arial,sans-serif;font-weight:800;font-style:italic;font-size:21px;margin:18px 0 8px;color:#fff}
+.day span{color:var(--muted);font-family:"Barlow Semi Condensed",Arial,sans-serif;font-style:normal;font-weight:600;font-size:14px;margin-left:6px}
+.cls{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:10px;display:grid;grid-template-columns:72px 1fr;gap:12px;align-items:center}
+.cls.mine{border-color:var(--pink);box-shadow:0 0 16px rgba(250,18,148,.2)}
+.tm{font-family:"Barlow Condensed","Arial Narrow",Arial,sans-serif;font-weight:900;font-style:italic;font-size:26px;line-height:.95;color:var(--lime)}
+.tm small{display:block;font-size:14px;color:var(--muted);font-style:normal;font-family:"Barlow Semi Condensed",Arial,sans-serif;font-weight:700}
+.cn{font-weight:700;font-size:19px;line-height:1.15}
+.co{color:var(--muted);font-size:14px;margin-top:2px}
+.bar{height:6px;border-radius:9px;background:#26263A;margin:8px 0 4px;overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--lime),var(--pink))}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.empty{text-align:center;padding:34px 16px;color:var(--muted)}
+.empty b{display:block;color:var(--ink);font-size:19px;margin-bottom:4px}
+.dlg{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:flex-end;justify-content:center;z-index:20;padding:0}
+.dlg.show{display:flex}
+.sheet{background:var(--card);border:1px solid var(--line);border-bottom:0;border-radius:22px 22px 0 0;width:100%;max-width:560px;max-height:92vh;overflow:auto;padding:22px 18px calc(22px + env(safe-area-inset-bottom))}
+@media (min-width:600px){.dlg{align-items:center}.sheet{border-radius:22px;border-bottom:1px solid var(--line)}}
+.sheet h3{font-family:"Barlow Condensed","Arial Narrow",Arial,sans-serif;font-weight:900;font-style:italic;font-size:30px;margin:0 0 6px}
+.kv{display:grid;grid-template-columns:90px 1fr;gap:6px 10px;margin:12px 0;font-size:16px}
+.kv b{color:var(--muted);font-weight:600}
+.rules{background:#0C0C12;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:12px 0;font-size:15px}
+.rules li{margin:4px 0}
+.ref{font-family:"Barlow Condensed","Arial Narrow",Arial,sans-serif;font-weight:900;font-style:italic;font-size:34px;color:var(--lime);letter-spacing:1px}
+.file{display:flex;align-items:center;gap:10px;border:1px dashed var(--line);border-radius:12px;padding:12px;margin-top:6px;cursor:pointer;color:var(--muted);font-weight:600}
+.file input{display:none}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#fff;color:#111;font-weight:700;padding:12px 18px;border-radius:12px;opacity:0;transition:.25s;z-index:30;max-width:90vw;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.spin{width:22px;height:22px;border:3px solid rgba(255,255,255,.2);border-top-color:var(--lime);border-radius:50%;animation:s .8s linear infinite;display:inline-block}
+@keyframes s{to{transform:rotate(360deg)}}
+.foot{text-align:center;color:var(--muted);font-size:13px;margin-top:30px;line-height:1.6}
+.foot a{color:var(--lime)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">FOOT<span class="w">WORK</span> <span class="p">PH</span><small>MEMBERS BOOKING</small></div>
+    <button class="btn ghost sm" id="outBtn" hidden>Log out</button>
+  </div>
+
+  <!-- LOGIN -->
+  <section id="login" hidden>
+    <h1>Book your <span>class</span></h1>
+    <p class="muted">For Footwork PH members. Log in with the Member ID on your card and the mobile number you registered with.</p>
+    <form class="card neon" id="loginForm" style="margin-top:16px" autocomplete="on">
+      <label for="mno">Member ID</label>
+      <input type="text" id="mno" placeholder="FW-001" autocapitalize="characters" autocomplete="username" required>
+      <label for="mob">Registered mobile number</label>
+      <input type="tel" id="mob" placeholder="09xx xxx xxxx" inputmode="tel" autocomplete="tel" required>
+      <label class="check"><input type="checkbox" id="remember" checked> Keep me logged in on this phone</label>
+      <div class="err" id="loginErr" hidden></div>
+      <button class="btn pink block" id="loginBtn" type="submit">Log in</button>
+    </form>
+    <p class="small muted" style="margin-top:14px">Not a member yet? Message our Facebook page <b style="color:var(--ink)">Footwork PH</b> to join and get priority booking.</p>
+  </section>
+
+  <!-- APP -->
+  <section id="app" hidden>
+    <div class="card hello">
+      <div style="min-width:0">
+        <div style="font-weight:700;font-size:20px" id="hiName"></div>
+        <div class="small muted" id="hiSub"></div>
+      </div>
+      <button class="btn ghost sm" id="refreshBtn" aria-label="Refresh schedule">↻</button>
+    </div>
+    <div class="err" id="pausedNote" hidden>Online booking is paused right now. Please message our Facebook page.</div>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="sched">Schedule</button>
+      <button role="tab" aria-selected="false" data-tab="mine">My bookings <span id="mineN"></span></button>
+    </div>
+    <div id="schedView">
+      <div class="chips" id="typeChips" role="group" aria-label="Filter by class"></div>
+      <div id="schedList"></div>
+    </div>
+    <div id="mineView" hidden></div>
+  </section>
+
+  <div id="loading" class="empty"><span class="spin"></span></div>
+
+  <div class="foot">Footwork PH Studio · JRMD Bldg, Barrio Rd, Tayuman, Binangonan, Rizal (beside Alfamart)<br>0933-855-2646 / 0919-002-6419</div>
+</div>
+
+<div class="dlg" id="dlg" role="dialog" aria-modal="true"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SB_URL = "https://djffchbmdvclzcfvoyhi.supabase.co";
+const SB_KEY = "sb_publishable__zMWLW4AsgYkDMFJGZH_Sg_2apYlo-i";
+const LS = "fwph-book-login";
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let cred = null, data = null, typeFilter = "", tab = "sched";
+
+const ERR = {
+  not_found: "We couldn't find that Member ID with that mobile number. Use the mobile number you registered with.",
+  expired: "Your membership has expired. Message our Facebook page to renew, then you can book again.",
+  locked: "Too many tries. Please wait 15 minutes, then try again.",
+  closed: "Booking for this class is closed. Online booking closes 12 hours before class.",
+  full: "Sorry, this class is full.",
+  already: "You already have a slot in this class.",
+  no_session: "This class is no longer on the schedule.",
+  expires_before: "Your membership expires before this class. Please renew first.",
+  paused: "Online booking is paused right now. Please message our Facebook page.",
+  too_late: "It's less than 12 hours before class, so you can't cancel online. Please message our Facebook page.",
+  no_booking: "We couldn't find that booking.",
+  bad_details: "Please check your details and try again.",
+  network: "No connection. Check your internet and try again."
+};
+
+async function rpc(fn, args){
+  try{
+    const r = await fetch(`${SB_URL}/rest/v1/rpc/${fn}`, {method:"POST", headers:{"apikey":SB_KEY,"Content-Type":"application/json"}, body:JSON.stringify(args)});
+    if(!r.ok) return {ok:false, error:"network"};
+    return await r.json();
+  }catch(e){ return {ok:false, error:"network"}; }
+}
+const lsGet = () => { try{ return JSON.parse(localStorage.getItem(LS)||"null"); }catch(e){ return null; } };
+const lsSet = v => { try{ v ? localStorage.setItem(LS, JSON.stringify(v)) : localStorage.removeItem(LS); }catch(e){} };
+function toast(t){ const el=$("toast"); el.textContent=t; el.classList.add("show"); clearTimeout(toast.t); toast.t=setTimeout(()=>el.classList.remove("show"),2600); }
+const fmtTime = t => { const [h,m]=String(t||"0:0").split(":").map(Number); return {t:((h%12)||12)+(m?":"+String(m).padStart(2,"0"):""), ap:h>=12?"PM":"AM"}; };
+const dObj = d => new Date(d+"T00:00");
+const dayLabel = d => dObj(d).toLocaleDateString("en-PH",{weekday:"long",month:"long",day:"numeric"});
+const todayISO = () => { const x=new Date(); x.setMinutes(x.getMinutes()-x.getTimezoneOffset()); return x.toISOString().slice(0,10); };
+const dayName = d => d===todayISO() ? "Today" : dObj(d).toLocaleDateString("en-PH",{weekday:"long"});
+
+function show(which){ $("loading").hidden = which!=="loading"; $("login").hidden = which!=="login"; $("app").hidden = which!=="app"; $("outBtn").hidden = which!=="app"; }
+
+async function load(silent){
+  if(!silent) show("loading");
+  const r = await rpc("fw_schedule", {p_no:cred.no, p_mobile:cred.mob});
+  if(!r.ok){
+    if(r.error==="network" && data){ toast(ERR.network); return; }
+    if(r.error==="network"){ show("login"); loginErr(ERR.network); return; }
+    cred=null; lsSet(null); show("login"); loginErr((r.name?`Hi ${r.name.split(" ")[0]}! `:"")+(ERR[r.error]||ERR.not_found)); return;
+  }
+  data = r; render(); show("app");
+}
+function loginErr(t){ const e=$("loginErr"); e.textContent=t||""; e.hidden=!t; }
+
+function render(){
+  const m = data.member;
+  $("hiName").textContent = "Hi, "+(m.name||"").split(" ")[0]+"!";
+  $("hiSub").innerHTML = `<span class="pill pink">${esc(m.memberNo)}</span> ${m.validUntil?`Member until ${esc(dObj(m.validUntil).toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"}))}`:""}`;
+  $("pausedNote").hidden = !!data.open;
+  const mine = data.sessions.filter(s=>s.mine);
+  $("mineN").textContent = mine.length ? `(${mine.length})` : "";
+  document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected", b.dataset.tab===tab));
+  $("schedView").hidden = tab!=="sched"; $("mineView").hidden = tab!=="mine";
+  // type chips
+  const types = [...new Set(data.sessions.map(s=>s.class))];
+  if(typeFilter && !types.includes(typeFilter)) typeFilter="";
+  $("typeChips").innerHTML = types.length>1 ? [`<button class="chip" aria-pressed="${!typeFilter}" data-type="">All classes</button>`, ...types.map(t=>`<button class="chip" aria-pressed="${typeFilter===t}" data-type="${esc(t)}">${esc(t)}</button>`)].join("") : "";
+  // schedule
+  const list = data.sessions.filter(s=>!typeFilter || s.class===typeFilter);
+  if(!data.sessions.length){
+    $("schedList").innerHTML = `<div class="empty card"><b>No classes posted yet</b>The class schedule will show here soon. Watch our Viber community for updates.</div>`;
+  } else {
+    let html="", last="";
+    list.forEach(s=>{ if(s.date!==last){ html+=`<div class="day">${esc(dayName(s.date))}<span>${esc(dObj(s.date).toLocaleDateString("en-PH",{month:"short",day:"numeric"}))}</span></div>`; last=s.date; } html+=card(s); });
+    $("schedList").innerHTML = html || `<div class="empty">No ${esc(typeFilter)} classes in the next 2 weeks.</div>`;
+  }
+  // my bookings
+  $("mineView").innerHTML = mine.length ? `<h2>Your upcoming classes</h2>` + mine.map(s=>{
+    const st = s.mine==="confirmed" ? `<span class="pill lime">Confirmed ✓</span>` : `<span class="pill warn">Waiting for payment</span>`;
+    const ft = fmtTime(s.time);
+    return `<div class="card" style="margin-bottom:10px">
+      <div class="row"><div><div class="cn">${esc(s.class)}</div><div class="co">${esc(dayLabel(s.date))} · ${ft.t} ${ft.ap}${s.coach?` · ${esc(s.coach)}`:""}</div></div>${st}</div>
+      <p class="small muted" style="margin-top:8px">Booking ref: <b style="color:var(--ink)">${esc(s.booking_ref||"")}</b>${s.mine==="pending"?(s.proof_sent?" · Proof sent, waiting for confirmation":" · Please pay to confirm your slot"):""}</p>
+      <div class="row" style="justify-content:flex-start;margin-top:10px">
+        ${s.mine==="pending"?`<button class="btn sm" data-proof="${esc(s.id)}">${s.proof_sent?"Send another proof":"Upload proof of payment"}</button>`:""}
+        ${s.open?`<button class="btn ghost sm" data-cancel="${esc(s.id)}">Cancel booking</button>`:`<span class="small muted">Can't cancel online (less than ${data.cutoffHours} hours to class)</span>`}
+      </div></div>`;
+  }).join("") : `<div class="empty card"><b>No bookings yet</b>Pick a class from the schedule to book your slot.</div>`;
+}
+function card(s){
+  const left = Math.max(0, s.capacity - s.taken), pct = Math.min(100, Math.round(s.taken/s.capacity*100));
+  const ft = fmtTime(s.time);
+  let btn;
+  if(s.checked_in) btn = `<span class="pill lime">Checked in ✓</span>`;
+  else if(s.mine==="confirmed") btn = `<span class="pill lime">Booked ✓</span>`;
+  else if(s.mine==="pending") btn = `<button class="btn sm" data-proof="${esc(s.id)}">Pay to confirm</button>`;
+  else if(left<=0) btn = `<span class="pill bad">Full</span>`;
+  else if(!s.open) btn = `<span class="pill">Booking closed</span>`;
+  else if(!data.open) btn = `<span class="pill">Paused</span>`;
+  else btn = `<button class="btn pink sm" data-book="${esc(s.id)}">Book</button>`;
+  return `<div class="cls${s.mine?" mine":""}">
+    <div class="tm">${ft.t}<small>${ft.ap}</small></div>
+    <div>
+      <div class="row"><div class="cn">${esc(s.class)}</div>${btn}</div>
+      ${s.coach?`<div class="co">with ${esc(s.coach)}</div>`:""}
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="small ${left<=2&&left>0?"":"muted"}" style="${left<=2&&left>0?"color:var(--warn);font-weight:700":""}">${left>0?`${left} of ${s.capacity} slots left`:"No slots left"}</div>
+    </div></div>`;
+}
+
+/* ---------- dialogs ---------- */
+function openSheet(html){ $("sheet").innerHTML = html; $("dlg").classList.add("show"); }
+function closeSheet(){ $("dlg").classList.remove("show"); }
+$("dlg").addEventListener("click", e=>{ if(e.target.id==="dlg" || e.target.closest("[data-close]")) closeSheet(); });
+
+function bookSheet(s){
+  const ft = fmtTime(s.time);
+  openSheet(`<h3>Book this class?</h3>
+    <div class="kv"><b>Class</b><span>${esc(s.class)}</span><b>When</b><span>${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}</span>${s.coach?`<b>Coach</b><span>${esc(s.coach)}</span>`:""}<b>Slots</b><span>${Math.max(0,s.capacity-s.taken)} of ${s.capacity} left</span></div>
+    <ul class="rules">
+      <li>Your slot is <b>reserved</b> now and <b>confirmed once you pay</b>.</li>
+      <li>Booking and cancelling close <b>${data.cutoffHours} hours</b> before class.</li>
+      <li>Bring your membership card. Show it at the counter for your points and discount.</li>
+    </ul>
+    <div class="err" id="bkErr" hidden></div>
+    <button class="btn pink block" id="bkGo">Confirm booking</button>
+    <button class="btn ghost block" style="margin-top:10px" data-close>Not now</button>`);
+  $("bkGo").onclick = async ()=>{
+    $("bkGo").disabled = true; $("bkGo").innerHTML = `<span class="spin"></span>`;
+    const r = await rpc("fw_member_book", {p_no:cred.no, p_mobile:cred.mob, p_session:s.id});
+    if(!r.ok){ $("bkErr").textContent = ERR[r.error]||ERR.network; $("bkErr").hidden=false; $("bkGo").disabled=false; $("bkGo").textContent="Confirm booking"; if(["full","closed","already","no_session"].includes(r.error)) load(true); return; }
+    await load(true);
+    const ns = data.sessions.find(x=>x.id===s.id) || s;
+    paySheet(ns, r.ref, true);
+  };
+}
+function paySheet(s, ref, fresh){
+  const ft = fmtTime(s.time);
+  openSheet(`<h3>${fresh?"Slot reserved! 🎉":"Pay to confirm"}</h3>
+    <p class="muted">${esc(s.class)} · ${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}</p>
+    <p class="small muted" style="margin-top:12px">Booking ref</p><div class="ref">${esc(ref||s.booking_ref||"")}</div>
+    <div class="rules">${esc(data.payNote)}</div>
+    <label for="pRef">GCash / Maya reference no. (optional)</label>
+    <input type="text" id="pRef" maxlength="60" placeholder="e.g. 1234 567 890123" inputmode="numeric">
+    <label>Screenshot of your payment</label>
+    <label class="file" id="pFileLbl"><input type="file" id="pFile" accept="image/*,application/pdf"><span>📎</span><span id="pFileName">Tap to choose a photo</span></label>
+    <div class="err" id="pErr" hidden></div>
+    <button class="btn pink block" id="pGo">Send proof of payment</button>
+    <button class="btn ghost block" style="margin-top:10px" data-close>${fresh?"I'll pay later":"Close"}</button>`);
+  $("pFile").onchange = e=>{ const f=e.target.files[0]; $("pFileName").textContent = f ? f.name : "Tap to choose a photo"; };
+  $("pGo").onclick = async ()=>{
+    const f = $("pFile").files[0], refNo = $("pRef").value.trim();
+    if(!f && !refNo){ $("pErr").textContent="Add your reference number or a screenshot."; $("pErr").hidden=false; return; }
+    $("pGo").disabled = true; $("pGo").innerHTML = `<span class="spin"></span>`;
+    let path = null;
+    if(f){ path = await upload(f); if(!path){ $("pErr").textContent="Upload failed. Try a smaller photo, or send it to our Facebook page."; $("pErr").hidden=false; $("pGo").disabled=false; $("pGo").textContent="Send proof of payment"; return; } }
+    const r = await rpc("fw_member_proof", {p_no:cred.no, p_mobile:cred.mob, p_booking:s.booking_id, p_pay_ref:refNo||null, p_proof_path:path});
+    if(!r.ok){ $("pErr").textContent = ERR[r.error]||ERR.network; $("pErr").hidden=false; $("pGo").disabled=false; $("pGo").textContent="Send proof of payment"; return; }
+    closeSheet(); toast("Proof sent! We'll confirm your slot soon."); load(true);
+  };
+}
+async function shrink(file){
+  if(!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
+  try{
+    const img = await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=URL.createObjectURL(file); });
+    const k = Math.min(1, 1600/Math.max(img.width,img.height));
+    const c = document.createElement("canvas"); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
+    c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+    const b = await new Promise(res=>c.toBlob(res,"image/jpeg",.85));
+    return b && b.size < file.size ? new File([b], "proof.jpg", {type:"image/jpeg"}) : file;
+  }catch(e){ return file; }
+}
+async function upload(file){
+  file = await shrink(file);
+  if(file.size > 5*1024*1024) return null;
+  const ext = file.type==="application/pdf" ? "pdf" : file.type==="image/png" ? "png" : file.type==="image/webp" ? "webp" : /hei[cf]/.test(file.type) ? "heic" : "jpg";
+  const id = (crypto.randomUUID ? crypto.randomUUID() : Date.now()+"-"+Math.random().toString(36).slice(2));
+  const path = `${data.owner}/${id}.${ext}`;
+  try{
+    const r = await fetch(`${SB_URL}/storage/v1/object/fw-booking-proofs/${path}`, {method:"POST", headers:{"apikey":SB_KEY,"Content-Type":file.type||"image/jpeg","x-upsert":"false"}, body:file});
+    return r.ok ? path : null;
+  }catch(e){ return null; }
+}
+function cancelSheet(s){
+  const ft = fmtTime(s.time);
+  openSheet(`<h3>Cancel this booking?</h3>
+    <p class="muted">${esc(s.class)} · ${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}</p>
+    <p class="small muted">Your slot will be given to another member. If you already paid, message our Facebook page about your payment.</p>
+    <div class="err" id="cErr" hidden></div>
+    <button class="btn block" style="background:var(--bad);color:#fff;box-shadow:none" id="cGo">Yes, cancel my slot</button>
+    <button class="btn ghost block" style="margin-top:10px" data-close>Keep my slot</button>`);
+  $("cGo").onclick = async ()=>{
+    $("cGo").disabled = true;
+    const r = await rpc("fw_member_cancel", {p_no:cred.no, p_mobile:cred.mob, p_booking:s.booking_id});
+    if(!r.ok){ $("cErr").textContent = ERR[r.error]||ERR.network; $("cErr").hidden=false; $("cGo").disabled=false; return; }
+    closeSheet(); toast("Booking cancelled."); load(true);
+  };
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-book],[data-proof],[data-cancel],[data-type],[data-tab]"); if(!b || !data) return;
+  if(b.dataset.tab){ tab=b.dataset.tab; render(); return; }
+  if(b.hasAttribute("data-type")){ typeFilter=b.dataset.type; render(); return; }
+  const id = b.dataset.book || b.dataset.proof || b.dataset.cancel, s = data.sessions.find(x=>x.id===id); if(!s) return;
+  if(b.dataset.book) bookSheet(s); else if(b.dataset.proof) paySheet(s, null, false); else cancelSheet(s);
+});
+$("loginForm").addEventListener("submit", async e=>{
+  e.preventDefault(); loginErr("");
+  const no = $("mno").value.trim(), mob = $("mob").value.trim();
+  if(mob.replace(/\D/g,"").length < 10){ loginErr("Please type your full mobile number."); return; }
+  $("loginBtn").disabled = true; $("loginBtn").innerHTML = `<span class="spin"></span>`;
+  const r = await rpc("fw_member_login", {p_no:no, p_mobile:mob});
+  $("loginBtn").disabled = false; $("loginBtn").textContent = "Log in";
+  if(!r.ok){ loginErr((r.name?`Hi ${r.name.split(" ")[0]}! `:"")+(ERR[r.error]||ERR.network)); return; }
+  cred = {no, mob}; if($("remember").checked) lsSet(cred);
+  load();
+});
+$("outBtn").onclick = ()=>{ cred=null; data=null; lsSet(null); $("mob").value=""; show("login"); };
+$("refreshBtn").onclick = ()=>{ load(true).then(()=>toast("Schedule updated")); };
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && cred && data) load(true); });
+
+cred = lsGet();
+if(cred && cred.no && cred.mob){ $("mno").value = cred.no; load(); } else show("login");
+</script>
+</body>
+</html>

@@ -522,7 +522,7 @@ async function syncNow(manual){
   }finally{ syncing = false; }
 }
 
-async function syncTick(manual){ const ok = await syncNow(manual); autoLapse(); return ok; }
+async function syncTick(manual){ const ok = await syncNow(manual); autoLapse(); loadBookings(); return ok; }
 
 /* ---------- sign in ---------- */
 const gate = document.getElementById("gate");
@@ -633,6 +633,50 @@ async function init(){
     if(document.hidden){ if(saveTimer){ clearTimeout(saveTimer); flush(saveSeq); } }
     else syncTick();
   });
+}
+
+/* ---------- online bookings (members booking link) ---------- */
+const BOOK_URL = "https://anjeleenpatena-coder.github.io/footwork-ph-manager/book/";
+let BK = [];
+async function loadBookings(){
+  if(!sb || !sbUser) return;
+  try{
+    const since = new Date(Date.now()-36*3600*1000).toISOString();
+    const r = await sb.from("fw_bookings").select("id,ref,class_id,class_name,starts_at,name,member_no,member_id,contact,status,pay_ref,proof_path,created_at")
+      .gte("starts_at", since).in("status",["pending","confirmed"]).order("starts_at");
+    if(r.error) return;
+    const before = JSON.stringify(BK); BK = r.data||[];
+    if(JSON.stringify(BK)!==before && !dlg.open) render();
+  }catch(e){}
+}
+const bkFor = sid => BK.filter(b=>b.class_id===sid);
+const bkWhen = b => { const d=new Date(b.starts_at); return d.toLocaleDateString("en-PH",{weekday:"short",month:"short",day:"numeric"})+" · "+d.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}); };
+function bookingsCard(){
+  if(!sbUser) return "";
+  const pend = BK.filter(b=>b.status==="pending"), conf = BK.filter(b=>b.status==="confirmed");
+  const row = b => `<li><div class="row between"><div style="min-width:0"><b>${esc(b.name)}</b> <span class="pill pink">${esc(b.member_no||"")}</span>
+     <div class="small">${esc(b.class_name||"Class")} · ${esc(bkWhen(b))}</div>
+     <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${b.proof_path?"":" · No screenshot yet"}</div></div>
+     <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Confirmed":"Waiting for payment"}</span></div>
+     <div class="row" style="margin-top:8px">${b.proof_path?`<button type="button" class="btn sm ghost" data-act="bkProof" data-id="${b.id}">View proof</button>`:""}
+     ${b.status==="pending"?`<button type="button" class="btn sm" data-act="bkConfirm" data-id="${b.id}">Paid · Confirm</button>`:`<button type="button" class="btn sm ghost" data-act="bkUnconfirm" data-id="${b.id}">Undo confirm</button>`}
+     <button type="button" class="btn sm ghost" data-act="bkCancel" data-id="${b.id}">Cancel booking</button></div></li>`;
+  return `<div class="card"><div class="row between"><h3 style="margin:0">Online bookings</h3><div class="row"><button type="button" class="btn sm ghost" data-act="bkCopy">Copy booking link</button><button type="button" class="btn sm ghost" data-act="bkRefresh" aria-label="Refresh bookings">↻</button></div></div>
+   <p class="small muted" style="margin:6px 0 10px">Members book with their Member ID and mobile number. Confirm each booking after you check the payment. Online booking closes 12 hours before class.</p>
+   ${pend.length?`<h3 style="margin:10px 0 6px">To confirm (${pend.length})</h3><ul class="list">${pend.map(row).join("")}</ul>`:`<p class="small muted" style="margin:6px 0">No bookings waiting for payment.</p>`}
+   ${conf.length?`<details style="margin-top:10px"><summary class="small"><b>Confirmed (${conf.length})</b></summary><ul class="list">${conf.map(row).join("")}</ul></details>`:""}</div>`;
+}
+async function bkSet(id, patch, msg){
+  const r = await sb.from("fw_bookings").update(Object.assign({updated_at:new Date().toISOString()}, patch)).eq("id", id);
+  if(r.error){ toast("Couldn't update. Check your internet."); return; }
+  toast(msg); await loadBookings(); render();
+}
+async function bkProof(id){
+  const b = BK.find(x=>x.id===id); if(!b||!b.proof_path) return;
+  const w = window.open("", "_blank");
+  const r = await sb.storage.from("fw-booking-proofs").createSignedUrl(b.proof_path, 600);
+  if(r.error || !r.data){ if(w) w.close(); toast("Couldn't open the proof."); return; }
+  if(w) w.location = r.data.signedUrl; else location.href = r.data.signedUrl;
 }
 
 /* ---------- helpers ---------- */
@@ -1556,14 +1600,14 @@ function statusToggles(s){
 function vSessions(){
   if(!classView) classView = lsGet("fw-cview") || "week";
   const viewSeg = `<div class="seg" role="group" aria-label="Classes view"><button type="button" data-cview="week" aria-pressed="${classView==="week"}">Week calendar</button><button type="button" data-cview="list" aria-pressed="${classView==="list"}">List and pay</button></div>`;
-  if(classView==="week") return `<div class="row between" style="margin-bottom:12px"><h2>Classes</h2><div class="row"><button class="btn lime" data-act="scan">Scan card</button><button class="btn" data-act="newSession">Add class</button></div></div>${viewSeg}${vWeek()}`;
+  if(classView==="week") return `<div class="row between" style="margin-bottom:12px"><h2>Classes</h2><div class="row"><button class="btn lime" data-act="scan">Scan card</button><button class="btn" data-act="newSession">Add class</button></div></div>${bookingsCard()}${viewSeg}${vWeek()}`;
   return vSessionList(viewSeg);
 }
 function vSessionList(viewSeg){
   const r=periodRange();
   const list = S.sessions.filter(s=>inR(s.date,r) && (!classTypeFilter || s.typeId===classTypeFilter)).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   return `<div class="row between" style="margin-bottom:12px"><h2>Classes</h2><div class="row"><button class="btn lime" data-act="scan">Scan card</button><button class="btn" data-act="newSession">Add class</button></div></div>
-  ${viewSeg}${periodBar()}
+  ${bookingsCard()}${viewSeg}${periodBar()}
   <div class="row" style="margin-bottom:12px"><label class="small muted" for="ctf">Class type</label><select id="ctf" class="sel">${typeOptions(classTypeFilter,"All classes")}</select></div>
   ${list.length?list.map(s=>{
     const c=sessionCalc(s), n=(s.attendees||[]).length, ins=instr(s.instructorId);
@@ -1592,7 +1636,7 @@ function vWeek(){
     const full = new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long",month:"long",day:"numeric"});
     return `<div class="wkday${d===today?" today":""}"><div class="wkh"><span class="dw${i===0||i===6?" we":""}">${dw}</span><span class="dn">${shortD(d)}</span></div>
       ${items.map(s=>{ const ins=instr(s.instructorId), n=(s.attendees||[]).length;
-        return `<button type="button" class="wkc" data-act="editSession" data-id="${s.id}"><span class="tm">${fmtTime(s.time)||"No time"}</span><b>${esc(typeName(s))}</b><span class="sub">${ins?esc(ins.name)+" · ":""}${n}/${cap} pax</span></button>`; }).join("")}
+        return `<button type="button" class="wkc" data-act="editSession" data-id="${s.id}"><span class="tm">${fmtTime(s.time)||"No time"}</span><b>${esc(typeName(s))}</b><span class="sub">${ins?esc(ins.name)+" · ":""}${n}/${cap} pax${bkFor(s.id).length?` · ${bkFor(s.id).length} booked`:""}</span></button>`; }).join("")}
       ${items.length?"":`<p class="small muted" style="margin:0">No class</p>`}
       <button type="button" class="btn sm ghost wkadd" data-act="calAdd" data-date="${d}" aria-label="Add class on ${esc(full)}">+ Add class</button></div>`;
   }).join("");
@@ -2175,6 +2219,7 @@ function sessionDlg(s, preset){
       <label class="f" id="s_pctwrap" ${instRate(s).mode!=="pct"?'style="display:none"':""}>Instructor % for this class<input type="number" min="0" max="100" id="s_pct" placeholder="Default ${pct}%" value="${s.pctOverride}"></label>
       <label class="f">Instructor attendance<select id="s_status"><option value="present" ${s.instStatus!=="absent"?"selected":""}>Present</option><option value="absent" ${s.instStatus==="absent"?"selected":""}>Absent</option></select></label>
     </div>
+    ${bkFor(s.id).length?`<h3 style="margin:8px 0 6px">Booked online (${bkFor(s.id).length})</h3><div id="s_bk" style="margin-bottom:10px">${bkFor(s.id).map(b=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span><b>${esc(b.name)}</b> <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Paid":"Not paid yet"}</span></span><button type="button" class="btn sm ghost" data-bkadd="${esc(b.member_id||"")}">Check in</button></div>`).join("")}</div>`:""}
     <h3 style="margin:8px 0 6px">Attendance</h3>
     <div class="row" style="margin-bottom:8px">${sel("s_addm","Add a member…",S.members.filter(m=>m.type==="member").sort(byName).map(m=>`<option value="${m.id}">${esc(memLabel(m))}</option>`).join(""))}</div>
     <div class="row" style="margin-bottom:8px">${sel("s_addn","Add a non-member…",S.members.filter(m=>m.type==="nonmember").sort(byName).map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join(""))}<button type="button" class="btn sm ghost" id="s_walk">New walk-in</button></div>
@@ -2198,6 +2243,7 @@ function sessionDlg(s, preset){
   document.getElementById("s_instr").onchange=e=>{ s.instructorId=e.target.value; document.getElementById("s_pctwrap").style.display = instRate(s).mode==="pct"?"":"none"; drawSum(); };
   document.getElementById("s_status").onchange=e=>{ s.instStatus=e.target.value; drawSum(); };
   document.getElementById("s_addm").onchange=e=>{ const m=member(e.target.value); e.target.value=""; if(m) add(m,"member"); };
+  const bkBox=document.getElementById("s_bk"); if(bkBox) bkBox.onclick=e=>{ const b=e.target.closest("[data-bkadd]"); if(!b) return; const m=member(b.dataset.bkadd); if(m) add(m, m.type==="member"?"member":"nonmember"); else toast("This member isn't in your records anymore."); };
   document.getElementById("s_addn").onchange=e=>{ const m=member(e.target.value); e.target.value=""; if(m) add(m,"nonmember"); };
   document.getElementById("s_walk").onclick=()=>{
     const n=prompt("Walk-in name (saved as non-member)"); if(!n||!n.trim()) return;
@@ -2585,6 +2631,12 @@ function handleAct(b){
   const ses = () => S.sessions.find(x=>x.id===id);
   const reRender = () => { if(!dlg.open) render(); };
   if(a==="newSession") sessionDlg();
+  else if(a==="bkConfirm") bkSet(id,{status:"confirmed"},"Booking confirmed");
+  else if(a==="bkUnconfirm") bkSet(id,{status:"pending"},"Back to waiting for payment");
+  else if(a==="bkCancel"){ if(confirm("Cancel this booking? The slot opens up for other members.")) bkSet(id,{status:"cancelled",cancelled_by:"studio"},"Booking cancelled"); }
+  else if(a==="bkProof") bkProof(id);
+  else if(a==="bkCopy") copyText(BOOK_URL,"Booking link copied");
+  else if(a==="bkRefresh") loadBookings().then(()=>{ render(); toast("Bookings updated"); });
   else if(a==="editSession") sessionDlg(ses());
   else if(a==="schedFor") sessionDlg(null,{instructorId:id});
   else if(a==="calAdd") sessionDlg(null,{date:b.dataset.date});
