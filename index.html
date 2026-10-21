@@ -420,6 +420,27 @@ const noNum = v => { const m=String(v||"").match(/(\d+)\s*$/); return m?+m[1]:0;
 const nextMemberNo = list => "FW-"+String((list||S.members).reduce((a,m)=>Math.max(a,noNum(m.memberNo)),0)+1).padStart(3,"0");
 
 /* ---------- storage ---------- */
+/* one-time: final rates & 5-session packages (rates poster, starting Nov 21, 2026) */
+function seedRatesV2(st){
+  const T = st.classTypes, find = (id, rx) => T.find(t=>t.id===id) || T.find(t=>rx.test(t.name||""));
+  const zumba = find("ct_zumba", /^zumba$/i), kids = find("ct_7pctyxtt", /kid/i), free = find("ct_934y5mll", /free/i);
+  const group = [find("ct_aero",/aero/i), find("ct_hiphop",/hip\s*hop/i), find("ct_brqsz6r2",/k-?pop/i), find("ct_pr9myfhj",/femme/i)].filter(Boolean);
+  if(!T.length) return;
+  st.rates.nonMember.reg = 350; st.rates.member.reg = 300;
+  if(st.promo && st.promo.ends === "2026-11-21") st.promo.ends = "2026-11-20";
+  if(zumba) Object.assign(zumba,{nonRate:200, memRate:150});
+  if(kids) Object.assign(kids,{nonRate:250, memRate:200});
+  if(free) free.free = true;
+  const ids = a => a.filter(Boolean).map(t=>t.id);
+  const add = (key, name, f, types, price) => { if(!st.plans.some(p=>p.seed===key)) st.plans.push({id:"pl_"+key, seed:key, name, for:f, typeIds:ids(types), price, promoPrice:"", sessions:5, days:30}); };
+  add("grp_non","5 Sessions · Aero/Hip Hop/K-Pop/Femme (Non-member)","nonmember",group,1500);
+  add("grp_mem","5 Sessions · Aero/Hip Hop/K-Pop/Femme (Member)","member",group,1250);
+  add("zum_non","5 Sessions · Zumba (Non-member)","nonmember",[zumba],850);
+  add("zum_mem","5 Sessions · Zumba (Member)","member",[zumba],650);
+  add("kid_non","5 Sessions · Kids Dance (Non-member)","nonmember",[kids],1100);
+  add("kid_mem","5 Sessions · Kids Dance (Member)","member",[kids],900);
+  st.ratesV2 = true;
+}
 function normalize(d){
   d = d || {};
   const o = {};
@@ -433,7 +454,8 @@ function normalize(d){
   st.promo = Object.assign({active:false,ends:""}, ds.promo||{});
   if(!Array.isArray(ds.classTypes)) st.classTypes = structuredClone(DEFAULT_TYPES);
   if(!st.categories.includes("Merchandise")) st.categories.splice(Math.max(0,st.categories.length-1),0,"Merchandise");
-  st.plans = (st.plans||[]).map(p=>Object.assign({promoPrice:""},p));
+  st.plans = (st.plans||[]).map(p=>Object.assign({promoPrice:"", for:"member", typeIds:[]},p));
+  if(!st.ratesV2) seedRatesV2(st);
   st.instructors = (st.instructors||[]).map(i=>Object.assign({pct:"",min:"",contact:"",notes:"",types:[]},i));
   st.mail = Object.assign({url:"", key:"", sent:{}}, ds.mail||{}); if(!st.mail.sent || typeof st.mail.sent!=="object") st.mail.sent = {};
   o.settings = st;
@@ -1391,7 +1413,35 @@ const fileDel = id => fileOp("readwrite", s=>s.delete(id)).catch(()=>{});
 function openFile(f){ const url=URL.createObjectURL(f); const a=document.createElement("a"); a.href=url; a.target="_blank"; a.rel="noopener"; dlg.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),60000); }
 const typeName = s => ctype(s.typeId)?.name || s.title || "Class";
 const promoOn = () => { const p=S.settings.promo; return !!p.active && (!p.ends || todayISO()<=p.ends); };
-const rate = key => { const r=S.settings.rates[key]||{}; return promoOn() && isSet(r.promo) ? +r.promo : (+r.reg||0); };
+/* rate per class type: free classes = 0, promo covers all classes, else the class type's own regular rate, else the default */
+const rate = (key, typeId) => {
+  const r=S.settings.rates[key]||{}, t=typeId?ctype(typeId):null;
+  if(t && t.free && key!=="membershipFee") return 0;
+  if(promoOn() && isSet(r.promo)) return +r.promo;
+  const tk = key==="member"?"memRate":key==="nonMember"?"nonRate":"";
+  if(t && tk && isSet(t[tk])) return +t[tk];
+  return +r.reg||0;
+};
+/* packages: for members or non-members, one class type, counted only when used */
+const pkgUsed = m => S.sessions.reduce((a,s)=>a+(s.attendees||[]).filter(x=>x.memberId===m.id && x.pkg && (!m.startDate || s.date>=m.startDate)).length,0);
+const pkgExp = (m,p) => p && m.startDate && +p.days ? addDays(m.startDate, +p.days) : null;
+function pkgFor(m, s){
+  const p = plan(m.planId); if(!p || !s) return null;
+  const kind = m.type==="member" && !cardExpired(m) ? "member" : "nonmember";
+  if(p.for && p.for!==kind) return null;
+  const types = m.planType ? [m.planType] : (p.typeIds||[]);
+  if(types.length && !types.includes(s.typeId)) return null;
+  if(m.startDate && s.date < m.startDate) return null;
+  const exp = pkgExp(m,p); if(exp && s.date > exp) return null;
+  if(+p.sessions && pkgUsed(m) >= +p.sessions) return null;
+  const paid = +m.paid>0 ? +m.paid : planPrice(p);
+  return { amount: +p.sessions ? paid/(+p.sessions) : 0 };
+}
+function priceFor(m, s, kind){
+  const pk = pkgFor(m, s);
+  if(pk) return { amount: Math.round(pk.amount*100)/100, pkg:true };
+  return { amount: rate(kind==="member"?"member":"nonMember", s && s.typeId), pkg:false };
+}
 const planPrice = p => promoOn() && isSet(p.promoPrice) ? +p.promoPrice : (+p.price||0);
 const inR = (d,r) => d && d>=r.from && d<=r.to;
 function toast(t){ const el=document.getElementById("toast"); el.textContent=t; el.classList.add("show"); clearTimeout(toast._t); toast._t=setTimeout(()=>el.classList.remove("show"),1800); }
@@ -1491,23 +1541,24 @@ function memberStats(m){
   const visits = S.sessions.filter(s=>(s.attendees||[]).some(x=>x.memberId===m.id)).sort((a,b)=>b.date.localeCompare(a.date));
   const spent = S.sessions.reduce((a,s)=>a+(s.attendees||[]).filter(x=>x.memberId===m.id).reduce((b,x)=>b+(+x.amount||0),0),0);
   const last = visits[0]?.date || "";
+  const p = plan(m.planId);
+  const used = pkgUsed(m), total = p ? +p.sessions||0 : 0;
+  const left = total ? total-used : null;
+  const exp = pkgExp(m,p);
+  const today = todayISO();
   if(m.type==="nonmember"){
+    const pk = p ? { p, used, left, exp } : {};
+    if(p && ((exp && exp < today) || (left!==null && left<=0))) return { ...pk, visits:visits.length, spent, last, status:"Package used up", cls:"bad", perSession: rate("nonMember") };
+    if(p) return { ...pk, visits:visits.length, spent, last, status:"Package", cls:"ok", perSession: rate("nonMember") };
     if(m.lapsedOn) return { visits:visits.length, spent, last, status:"Membership expired", cls:"bad", perSession: rate("nonMember") };
     return { visits:visits.length, spent, last, status: visits.length>=4?"Offer membership":"Walk-in", cls: visits.length>=4?"warn":"", perSession: rate("nonMember") };
   }
-  const p = plan(m.planId);
-  const used = visits.length, total = p ? +p.sessions||0 : 0;
-  const left = total ? total-used : null;
-  const exp = p && m.startDate && +p.days ? addDays(m.startDate, +p.days) : null;
-  const today = todayISO();
   let status="Active", cls="ok";
   if(exp && exp < today){ status="Expired"; cls="bad"; }
   else if(left!==null && left<=0){ status="Used up"; cls="bad"; }
   else if((exp && addDays(today,5) >= exp) || (left!==null && left<=2)){ status="Renew soon"; cls="warn"; }
   if(m.validUntil){ if(m.validUntil < today){ status="Membership expired"; cls="bad"; } else if(cls==="ok" && addDays(today,14) >= m.validUntil){ status="Renew soon"; cls="warn"; } }
-  let perSession = rate("member");
-  if(p && +p.sessions){ const paid = +m.paid>0 ? +m.paid : planPrice(p); perSession = paid/(+p.sessions); }
-  return { p, used, left, exp, status, cls, perSession, visits:visits.length, spent, last };
+  return { p, used, left, exp, status, cls, perSession: rate("member"), visits:visits.length, spent, last };
 }
 function totals(r){
   const ses = S.sessions.filter(s=>inR(s.date,r));
@@ -1519,7 +1570,7 @@ function totals(r){
   const exp = exps.reduce((a,e)=>a+(+e.amount||0),0);
   const expMerch = exps.filter(e=>e.itemId).reduce((a,e)=>a+(+e.amount||0),0);
   const fees = S.members.reduce((a,m)=>a+(feeCounts(m)&&inR(m.feeDate,r)?(+m.feePaid||0):0)+(m.feeHistory||[]).reduce((b,f)=>b+(inR(f.date,r)?(+f.amount||0):0),0),0);
-  const packs = S.members.filter(m=>feeCounts(m) && inR(m.paidDate,r)).reduce((a,m)=>a+(+m.paid||0),0);
+  const packs = S.members.filter(m=>(feeCounts(m) || m.planId) && inR(m.paidDate,r)).reduce((a,m)=>a+(+m.paid||0),0);
   const rents = S.rentals.filter(x=>inR(x.date,r));
   const rental = rents.filter(x=>x.status==="paid").reduce((a,x)=>a+rentalAmt(x),0);
   const rentalPending = rents.filter(x=>x.status==="pending").reduce((a,x)=>a+rentalAmt(x),0);
@@ -1864,6 +1915,7 @@ function vMembers(){
     ${m.contact?`<div class="small muted">${esc(m.contact)}</div>`:""}
     ${!isMem&&m.email?`<div class="small muted" style="overflow-wrap:anywhere">${esc(m.email)}</div>`:""}
     ${!isMem&&m.lapsedOn?`<div class="small muted">${esc(m.memberNo||"Member")} · expired ${fmtDate(m.validUntil)}</div>`:""}
+    ${!isMem&&st.p?`<div class="small muted">📦 ${esc(st.p.name)}${st.left!==null?` · ${st.left} left`:""}${st.exp?` · ends ${fmtDate(st.exp)}`:""}</div>`:""}
     ${!isMem&&interestNames(m).length?`<div class="small muted">Interested in: ${esc(interestNames(m).join(", "))}</div>`:""}</div>
     <div class="row"><span class="pill ${st.cls}">${st.status}</span>${isMem?`<button class="btn sm ghost" data-act="printContract" data-id="${m.id}" title="Print contract" aria-label="Print contract for ${esc(m.name)}">🖨</button><button class="btn sm ghost" data-act="printCard" data-id="${m.id}" title="Print ID card" aria-label="Print ID card for ${esc(m.name)}">🪪</button>`:""}${!isMem&&!isMinor(m)?`<button class="btn sm ghost" data-act="printWaiver" data-id="${m.id}" title="Print waiver" aria-label="Print waiver for ${esc(m.name)}">📝</button>`:""}${isMinor(m)?`<button class="btn sm ghost" data-act="printConsent" data-id="${m.id}" title="Print parent consent" aria-label="Print parent consent for ${esc(m.name)}">👪</button>`:""}<button class="btn sm ghost" data-act="editPerson" data-id="${m.id}">Edit</button></div></div></li>`;}).join("")}</ul>`
     :`<p class="empty">${isMem?"No members yet. Add your first member.":"No non-members yet. Walk-ins you add in a class show up here."}</p>`}</div>`;
@@ -1995,7 +2047,7 @@ function vSettings(){
     <label class="f">Renewal reminder: days before membership expires<input type="number" min="0" data-set="remindDays" value="${remindDays()}"></label>
     <p class="small muted" style="margin:0">The bell at the top lights up when a reminder is due.</p></div>
   <div class="card"><div class="row between" style="margin-bottom:8px"><h3>Class types</h3><button class="btn sm" data-act="newType">Add class type</button></div>
-    ${st.classTypes.length?`<ul class="list">${st.classTypes.map(t=>`<li><div class="row between"><b>${esc(t.name)}</b><button class="btn sm ghost" data-act="editType" data-id="${t.id}">Edit</button></div></li>`).join("")}</ul>`:`<p class="small muted">No class types. Add Zumba, Hip Hop, Aero Step Dance…</p>`}
+    ${st.classTypes.length?`<ul class="list">${st.classTypes.map(t=>`<li><div class="row between"><div><b>${esc(t.name)}</b><div class="small muted">${t.free?"Free class":`Non-member ${peso(isSet(t.nonRate)?t.nonRate:st.rates.nonMember.reg)} · Member ${peso(isSet(t.memRate)?t.memRate:st.rates.member.reg)}`}</div></div><button class="btn sm ghost" data-act="editType" data-id="${t.id}">Edit</button></div></li>`).join("")}</ul>`:`<p class="small muted">No class types. Add Zumba, Hip Hop, Aero Step Dance…</p>`}
   </div>
   <div class="card"><h3 style="margin-bottom:10px">Instructor pay split</h3>
     <div class="grid2">
@@ -2007,7 +2059,7 @@ function vSettings(){
     <p class="small muted" style="margin:0">Default for everyone. You can set a different split per instructor or per class.</p>
   </div>
   <div class="card"><div class="row between" style="margin-bottom:8px"><h3>Member packages</h3><button class="btn sm" data-act="newPlan">Add package</button></div>
-    ${st.plans.length?`<ul class="list">${st.plans.map(p=>`<li><div class="row between"><div><b>${esc(p.name)}</b><div class="small muted">${peso(p.price)}${isSet(p.promoPrice)?` · promo ${peso(p.promoPrice)}`:""} · ${+p.sessions?p.sessions+" sessions":"Unlimited"} · ${p.days} days</div></div><button class="btn sm ghost" data-act="editPlan" data-id="${p.id}">Edit</button></div></li>`).join("")}</ul>`:`<p class="small muted">Example: 8-session monthly, unlimited monthly.</p>`}
+    ${st.plans.length?`<ul class="list">${st.plans.map(p=>`<li><div class="row between"><div><b>${esc(p.name)}</b><div class="small muted">${p.for==="nonmember"?"Non-members":p.for==="member"?"Members":"Anyone"}${(p.typeIds||[]).length?" · "+esc(p.typeIds.map(id=>ctype(id)?.name).filter(Boolean).join(", ")):""}</div><div class="small muted">${peso(p.price)}${isSet(p.promoPrice)?` · promo ${peso(p.promoPrice)}`:""} · ${+p.sessions?p.sessions+" sessions":"Unlimited"} · ${p.days} days</div></div><button class="btn sm ghost" data-act="editPlan" data-id="${p.id}">Edit</button></div></li>`).join("")}</ul>`:`<p class="small muted">Example: 8-session monthly, unlimited monthly.</p>`}
   </div>
   <div class="card"><h3 style="margin-bottom:10px">Studio</h3>
     <label class="f">Studio name<input data-set="studioName" value="${esc(st.studioName)}"></label>
@@ -2053,6 +2105,30 @@ function openDlg(title, body, {onSave, onDelete, saveLabel="Save", noFoot=false}
 }
 const val = id => document.getElementById(id).value.trim();
 
+/* package picker, shared by the member and non-member forms */
+function pkgBlock(m, kind){
+  const plans = S.settings.plans.filter(p=>!p.for || p.for===kind || p.id===m.planId);
+  const fallback = kind==="member" ? rate("member") : rate("nonMember");
+  return `<div class="cbox"><b class="small">5-session package</b>
+    <label class="f" style="margin-top:8px">Package<select id="m_plan"><option value="">No package (pay per session, ${peso(fallback)})</option>${plans.map(p=>`<option value="${p.id}" ${p.id===m.planId?"selected":""}>${esc(p.name)} — ${peso(planPrice(p))}</option>`).join("")}</select></label>
+    <label class="f" id="m_ptypeWrap">Class type for this package<select id="m_ptype"></select></label>
+    <div class="grid2">
+      <label class="f">Package start<input type="date" id="m_start" value="${m.startDate||todayISO()}"></label>
+      <label class="f">Package amount paid (₱)<input type="number" min="0" id="m_paid" value="${m.paid}"></label>
+      <label class="f">Date paid<input type="date" id="m_paidDate" value="${m.paidDate||todayISO()}"></label></div>
+    <p class="small muted" style="margin:0">Same class type only, for this person only. Sessions are taken from the package at check-in.</p></div>`;
+}
+function wirePkg(m){
+  const ps=document.getElementById("m_plan"), ts=document.getElementById("m_ptype"), tw=document.getElementById("m_ptypeWrap"), paid=document.getElementById("m_paid");
+  if(!ps) return;
+  const draw = first => {
+    const p = plan(ps.value), ids = p ? (p.typeIds||[]) : [];
+    tw.style.display = ids.length ? "" : "none";
+    ts.innerHTML = (ids.length>1?`<option value="">Pick one…</option>`:"") + ids.map(id=>`<option value="${id}" ${id===m.planType?"selected":""}>${esc(ctype(id)?.name||"?")}</option>`).join("");
+    if(!first && p) paid.value = planPrice(p);
+  };
+  ps.onchange = ()=>draw(false); draw(true);
+}
 function personDlg(m, type){
   const isNew=!m; type = m ? m.type : type;
   m = m || {id:uid(), type, name:"", contact:"", planId:"", startDate:todayISO(), paid:"", paidDate:todayISO(), feePaid: type==="member"?rate("membershipFee"):"", feeDate:todayISO(), notes:""};
@@ -2085,11 +2161,7 @@ function personDlg(m, type){
       <div class="row" style="gap:6px"><button type="button" class="btn sm" id="m_qrdl">Download QR</button><button type="button" class="btn sm ghost" id="m_qrnew">New code (lost card)</button></div></div></div></div>
     <div class="cbox"><div class="row between"><div style="min-width:0"><b class="small">Membership ID card (PDF)</b><div class="small muted">Auto-filled with this member's details. QR code is already on the back. Real ID size.</div></div>
       <div class="row" style="gap:6px"><button type="button" class="btn sm" id="m_card">🪪 Print / download card</button></div></div></div>`}
-    <label class="f">Package<select id="m_plan"><option value="">No package (pay per session ${peso(rate("member"))})</option>${S.settings.plans.map(p=>`<option value="${p.id}" ${p.id===m.planId?"selected":""}>${esc(p.name)} — ${peso(planPrice(p))}</option>`).join("")}</select></label>
-    <div class="grid2">
-      <label class="f">Package start<input type="date" id="m_start" value="${m.startDate||""}"></label>
-      <label class="f">Package amount paid (₱)<input type="number" min="0" id="m_paid" value="${m.paid}"></label>
-      <label class="f">Date paid<input type="date" id="m_paidDate" value="${m.paidDate||""}"></label></div>
+    ${pkgBlock(m,"member")}
     <label class="f">Notes<textarea id="m_notes" rows="2">${esc(m.notes||"")}</textarea></label>
     ${isNew?"":attHistory(m)}
     <div class="cbox"><div class="row between"><div style="min-width:0"><b class="small">Membership contract (PDF)</b><div class="small muted">Auto-filled with this member's details. 2 pages, A4. Print it for signing.</div></div>
@@ -2108,7 +2180,8 @@ function personDlg(m, type){
     </div>
     <p class="flabel" id="m_intLbl">Interested in (tick all that apply)</p>
     <div class="checks" role="group" aria-labelledby="m_intLbl">${S.settings.classTypes.map(t=>`<label><input type="checkbox" name="m_interest" value="${t.id}" ${(m.interests||[]).includes(t.id)?"checked":""}>${esc(t.name)}</label>`).join("")||`<span class="small muted">Add class types in Settings first.</span>`}</div>
-    <p class="small muted">Non-members pay ${peso(rate("nonMember"))} per session. No membership fee.</p>
+    <p class="small muted">Non-members pay ${peso(rate("nonMember"))} per session, or buy a package. No membership fee.</p>
+    ${pkgBlock(m,"nonmember")}
     <label class="f">Notes<textarea id="m_notes" rows="2">${esc(m.notes||"")}</textarea></label>
     ${isNew?"":attHistory(m)}
     <div class="cbox"><div class="row between"><div style="min-width:0"><b class="small">Waiver and health declaration</b><div class="small muted">For non-members 18 and above. Sign once before the first class. Auto-filled, 1 page, A4.</div></div>
@@ -2140,6 +2213,10 @@ function personDlg(m, type){
         if(addMonths(from, MEMBER_MONTHS) < todayISO()){ toast("That Valid from date is already expired"); return false; }
         if(val("m_jfee")==="" || !(+val("m_jfee")>=0)){ toast("Enter the membership fee paid"); return false; }
       }
+      { const pid=val("m_plan"), pp=plan(pid);
+        if(pp && (pp.typeIds||[]).length>1 && !val("m_ptype")){ toast("Pick the class type for this package"); return false; }
+        if(pp && !val("m_start")){ toast("Enter the package start date"); return false; }
+        Object.assign(m,{planId:pid, planType: pp ? (val("m_ptype") || (pp.typeIds||[])[0] || "") : "", startDate:val("m_start"), paid:+val("m_paid")||0, paidDate:val("m_paidDate")}); }
       if(!mem){
         m.interests = [...document.querySelectorAll('input[name="m_interest"]:checked')].map(x=>x.value);
         Object.assign(m,{email:val("m_email").trim(), birthday:val("m_bday"), ecName:val("m_ecName"), ecNo:val("m_ecNo")});
@@ -2147,7 +2224,7 @@ function personDlg(m, type){
       if(joining){ joinMembership(m, val("m_jfee"), val("m_jfrom")); peopleSeg = "member"; }
       if(mem){
         Object.assign(m,{memberNo:val("m_no"), email:val("m_email"), birthday:val("m_bday"), ecName:val("m_ecName"), ecNo:val("m_ecNo"), memType:val("m_mtype"), validFrom:val("m_vFrom"), validUntil:val("m_vUntil"), receivedBy:val("m_recBy"),
-          feePaid:+val("m_fee")||0, feeDate:val("m_feeDate"), planId:val("m_plan"), startDate:val("m_start"), paid:+val("m_paid")||0, paidDate:val("m_paidDate")});
+          feePaid:+val("m_fee")||0, feeDate:val("m_feeDate")});
         m.contract = cMeta || null;
         if(cFile){ const f=cFile; if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
           fileSave(m.id,f).catch(()=>{ m.contract=null; save(); render(); toast("Could not keep the file on this device"); }); }
@@ -2156,6 +2233,7 @@ function personDlg(m, type){
       if(isNew) S.members.push(m); toast(joining?`Moved to Members as ${m.memberNo}`:isNew?(mem?"Added. Contract is ready to print.":"Added"):"Saved");
     },
     onDelete: isNew?null:()=>{ S.members=S.members.filter(x=>x.id!==m.id); fileDel(m.id); } });
+  wirePkg(m);
   if(!mem){
     const jb=document.getElementById("m_join"), jf=document.getElementById("m_jf"), jfrom=document.getElementById("m_jfrom");
     jb.onchange=()=>{ jf.hidden = !jb.checked; };
@@ -2221,7 +2299,7 @@ function sessionDlg(s, preset){
   const drawSum = ()=>{ const c=sessionCalc(s); document.getElementById("s_sum").innerHTML = `<p class="small" style="margin:10px 0 0">${s.attendees.length}/${S.settings.capacity} pax · Sales <b>${peso(c.gross)}</b></p>${splitBar(c.inst,c.biz,c.pct)}`; };
   const drawAtt = ()=>{
     const box=document.getElementById("s_att");
-    box.innerHTML = s.attendees.length ? s.attendees.map((a,i)=>`<div class="att"><span class="nm">${esc(member(a.memberId)?.name||newNon.find(n=>n.id===a.memberId)?.name||a.name)} <span class="pill ${a.kind==="nonmember"?"":"pink"}">${a.kind==="nonmember"?"non-member":"member"}</span></span><input type="number" min="0" aria-label="Amount paid" data-i="${i}" value="${a.amount}"><button type="button" class="x" data-rm="${i}" aria-label="Remove">✕</button></div>`).join("") : `<p class="small muted">No one checked in yet.</p>`;
+    box.innerHTML = s.attendees.length ? s.attendees.map((a,i)=>`<div class="att"><span class="nm">${esc(member(a.memberId)?.name||newNon.find(n=>n.id===a.memberId)?.name||a.name)} <span class="pill ${a.kind==="nonmember"?"":"pink"}">${a.kind==="nonmember"?"non-member":"member"}</span>${a.pkg?` <span class="pill ok">package</span>`:""}</span><input type="number" min="0" aria-label="Amount paid" data-i="${i}" value="${a.amount}"><button type="button" class="x" data-rm="${i}" aria-label="Remove">✕</button></div>`).join("") : `<p class="small muted">No one checked in yet.</p>`;
     box.querySelectorAll("input[data-i]").forEach(inp=>inp.oninput=()=>{ s.attendees[+inp.dataset.i].amount=+inp.value||0; drawSum(); });
     box.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{ s.attendees.splice(+b.dataset.rm,1); drawAtt(); });
     drawSum();
@@ -2255,8 +2333,9 @@ function sessionDlg(s, preset){
   const add = (m, kind) => {
     if(s.attendees.some(a=>a.memberId===m.id)){ toast("Already checked in"); return; }
     if(s.attendees.length>=+S.settings.capacity) toast("Class is full. Check capacity.");
-    const amt = kind==="member" ? memberStats(m).perSession : rate("nonMember");
-    s.attendees.push({memberId:m.id, name:m.name, kind, amount:Math.round(amt*100)/100}); drawAtt();
+    s.typeId = val("s_type"); s.date = val("s_date") || s.date;
+    const pr = priceFor(m, s, kind);
+    s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind, amount:Math.round(pr.amount*100)/100}, pr.pkg?{pkg:true}:{})); drawAtt();
   };
   document.getElementById("s_pct").oninput=e=>{ s.pctOverride=e.target.value; drawSum(); };
   document.getElementById("s_instr").onchange=e=>{ s.instructorId=e.target.value; document.getElementById("s_pctwrap").style.display = instRate(s).mode==="pct"?"":"none"; drawSum(); };
@@ -2330,8 +2409,9 @@ function scanDlg(preId){
       return;
     }
     const over = s.attendees.length >= +S.settings.capacity;
-    const amount = Math.round((active ? memberStats(m).perSession : rate("nonMember"))*100)/100;
-    s.attendees.push({memberId:m.id, name:m.name, kind:active?"member":"nonmember", amount, via, at:new Date().toISOString()});
+    const pr = priceFor(m, s, active?"member":"nonmember");
+    const amount = Math.round(pr.amount*100)/100;
+    s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind:active?"member":"nonmember", amount, via, at:new Date().toISOString()}, pr.pkg?{pkg:true}:{}));
     save();
     show({cls:"ok", title:"Checked in", m, text:`${classLabel(s)} · ${peso(amount)}${over?" · Class is over capacity":""}`, btn:"undo", btnLabel:"Undo"});
   };
@@ -2497,12 +2577,20 @@ function instrDlg(i){
 }
 
 function typeDlg(t){
-  const isNew=!t; t = t || {id:"ct_"+uid(), name:""};
-  const used = S.sessions.filter(s=>s.typeId===t.id).length;
+  const isNew=!t; t = t || {id:"ct_"+uid(), name:"", nonRate:"", memRate:"", free:false};
+  const used = S.sessions.filter(s=>s.typeId===t.id).length, R=S.settings.rates;
   openDlg(isNew?"Add class type":"Edit class type", `
     <label class="f">Class type name<input id="t_name" value="${esc(t.name)}" placeholder="e.g. Zumba"></label>
+    <div class="grid2">
+      <label class="f">Non-member rate (₱)<input type="number" min="0" id="t_non" value="${t.nonRate??""}" placeholder="Default ${R.nonMember.reg}"></label>
+      <label class="f">Member rate (₱)<input type="number" min="0" id="t_mem" value="${t.memRate??""}" placeholder="Default ${R.member.reg}"></label>
+    </div>
+    <p class="small muted" style="margin:-4px 0 10px">Regular rates for this class. Leave blank to use the default. Promo rates still apply to all classes while promo is on.</p>
+    <div class="checks"><label><input type="checkbox" id="t_free" ${t.free?"checked":""}>Free class (₱0, e.g. Free Zumba)</label></div>
     ${used?`<p class="small muted">Used in ${used} classes. Deleting keeps those classes but removes the type label.</p>`:""}`,
-  { onSave:()=>{ if(!val("t_name")){ toast("Enter a name"); return false; } t.name=val("t_name"); if(isNew) S.settings.classTypes.push(t); toast(isNew?"Class type added":"Class type saved"); },
+  { onSave:()=>{ if(!val("t_name")){ toast("Enter a name"); return false; } t.name=val("t_name");
+      const nr=val("t_non"), mr=val("t_mem"); t.nonRate = nr===""?"":+nr; t.memRate = mr===""?"":+mr; t.free = document.getElementById("t_free").checked;
+      if(isNew) S.settings.classTypes.push(t); toast(isNew?"Class type added":"Class type saved"); },
     onDelete: isNew?null:()=>{ S.settings.classTypes=S.settings.classTypes.filter(x=>x.id!==t.id); S.settings.instructors.forEach(i=>i.types=(i.types||[]).filter(x=>x!==t.id)); S.members.forEach(m=>{ if(m.interests) m.interests=m.interests.filter(x=>x!==t.id); }); S.sessions.forEach(s=>{ if(s.typeId===t.id){ s.title=t.name; s.typeId=""; } }); } });
 }
 
@@ -2626,9 +2714,14 @@ function expenseDlg(e){
 }
 
 function planDlg(p){
-  const isNew=!p; p = p || {id:uid(), name:"", price:"", promoPrice:"", sessions:"", days:30};
+  const isNew=!p; p = p || {id:uid(), name:"", price:"", promoPrice:"", sessions:"", days:30, for:"member", typeIds:[]};
+  const pt = p.typeIds||[];
   openDlg(isNew?"Add package":"Edit package", `
-    <label class="f">Package name<input id="p_name" value="${esc(p.name)}" placeholder="e.g. 8-session monthly"></label>
+    <label class="f">Package name<input id="p_name" value="${esc(p.name)}" placeholder="e.g. 5 Sessions · Zumba (Member)"></label>
+    <label class="f">For<select id="p_for"><option value="member" ${p.for!=="nonmember"&&p.for!==""?"selected":""}>Members</option><option value="nonmember" ${p.for==="nonmember"?"selected":""}>Non-members</option><option value="" ${p.for===""?"selected":""}>Anyone</option></select></label>
+    <p class="flabel" id="p_typeLbl">Class types it covers (blank = any class)</p>
+    <div class="checks" role="group" aria-labelledby="p_typeLbl">${S.settings.classTypes.map(t=>`<label><input type="checkbox" name="p_type" value="${t.id}" ${pt.includes(t.id)?"checked":""}>${esc(t.name)}</label>`).join("")}</div>
+    <p class="small muted">The student picks ONE of these when they buy. Sessions only count in that class type.</p>
     <div class="grid2">
       <label class="f">Regular price (₱)<input type="number" min="0" id="p_price" value="${p.price}"></label>
       <label class="f">Promo price (₱)<input type="number" min="0" id="p_promo" value="${p.promoPrice}" placeholder="Optional"></label>
@@ -2638,7 +2731,8 @@ function planDlg(p){
   { onSave:()=>{
       if(!val("p_name")){ toast("Enter a package name"); return false; }
       const pr=val("p_promo");
-      Object.assign(p,{name:val("p_name"), price:+val("p_price")||0, promoPrice:pr===""?"":+pr, sessions:+val("p_ses")||0, days:+val("p_days")||30});
+      Object.assign(p,{name:val("p_name"), price:+val("p_price")||0, promoPrice:pr===""?"":+pr, sessions:+val("p_ses")||0, days:+val("p_days")||30,
+        for:val("p_for"), typeIds:[...document.querySelectorAll('input[name="p_type"]:checked')].map(x=>x.value)});
       if(isNew) S.settings.plans.push(p);
     },
     onDelete: isNew?null:()=>{ S.settings.plans=S.settings.plans.filter(x=>x.id!==p.id); } });
