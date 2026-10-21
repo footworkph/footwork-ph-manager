@@ -659,7 +659,7 @@ async function init(){
 }
 
 /* ---------- online bookings (members booking link) ---------- */
-const BOOK_URL = "https://anjeleenpatena-coder.github.io/footwork-ph-manager/book/";
+const BOOK_URL = new URL("book/", location.origin + location.pathname.replace(/[^/]*$/, "")).href;
 let BK = [];
 async function loadBookings(){
   if(!sb || !sbUser) return;
