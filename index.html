@@ -1682,7 +1682,7 @@ function schedText(ws){
   const cap=+S.settings.capacity||10;
   return `FOOTWORK PH · CLASS SCHEDULE\n${weekLabel(ws)}\n\n` +
     schedDays(ws).map(x=>longDay(x.d)+"\n"+x.items.map(s=>{ const i=instr(s.instructorId); return `• ${fmtTime(s.time)} – ${typeName(s)}${i?" ("+i.name+")":""}`; }).join("\n")).join("\n\n") +
-    `\n\nBook in advance before going to the studio. Max ${cap} per class.\nClass times subject to change.`;
+    `\n\n📲 BOOK YOUR SLOT HERE:\n${BOOK_URL}\n\nHOW TO BOOK:\n1. Open the link above.\n2. Log in with your Member ID (on your card, e.g. FW-001) and your registered mobile number.\n3. Tap "Book" on the class you want, then "Confirm booking".\n4. Pay via GCash/Maya and upload your payment screenshot to confirm your slot.\n\nBook in advance before going to the studio. Max ${cap} per class.\nClass times subject to change.`;
 }
 function schedHtml(ws, note){
   const cap=+S.settings.capacity||10, F="font-family:Arial,Helvetica,sans-serif;";
@@ -1694,6 +1694,8 @@ function schedHtml(ws, note){
 <tr><td style="${F}background:#111111;padding:22px 16px;text-align:center"><div style="font-size:30px;font-weight:900;font-style:italic;letter-spacing:1px"><span style="color:#ffffff">FOOT</span><span style="color:#FA1294">WORK</span> <span style="color:#B4FA2A">PH</span></div><div style="font-size:13px;font-weight:800;color:#B4FA2A;margin-top:6px;letter-spacing:2px">WEEKLY CLASS SCHEDULE</div><div style="font-size:17px;font-weight:700;color:#ffffff;margin-top:4px">${esc(weekLabel(ws))}</div></td></tr>
 ${note?`<tr><td style="${F}padding:18px 16px 2px;font-size:15px;line-height:1.5;color:#222">${esc(note).replace(/\n/g,"<br>")}</td></tr>`:""}
 <tr><td style="padding:4px 0 12px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table></td></tr>
+<tr><td align="center" style="padding:6px 16px 18px"><a href="${BOOK_URL}" target="_blank" style="${F}display:inline-block;background:#111111;color:#B4FA2A;font-size:18px;font-weight:900;letter-spacing:1px;text-decoration:none;padding:16px 34px;border-radius:999px;border:3px solid #B4FA2A">BOOK YOUR SLOT</a><div style="${F}font-size:12px;color:#555;margin-top:8px;word-break:break-all">${BOOK_URL}</div></td></tr>
+<tr><td style="${F}padding:0 16px 18px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f3fa;border-radius:10px"><tr><td style="${F}padding:14px 16px;font-size:14px;line-height:1.6;color:#222"><div style="font-weight:800;color:#E8157F;margin-bottom:6px;letter-spacing:.5px">HOW TO BOOK</div>1. Tap <b>Book Your Slot</b> above.<br>2. Log in with your <b>Member ID</b> (on your card, e.g. FW-001) and your <b>registered mobile number</b>.<br>3. Tap <b>Book</b> on the class you want, then <b>Confirm booking</b>.<br>4. Pay via GCash/Maya and upload your payment screenshot to confirm your slot.</td></tr></table></td></tr>
 <tr><td style="${F}background:#FA1294;padding:14px 16px;font-size:14px;line-height:1.45;font-weight:700;color:#ffffff;text-align:center">Please book in advance before going to the studio. Max ${cap} per class. Show your membership card at the counter for your points and perks.</td></tr>
 <tr><td style="${F}padding:14px 16px;font-size:12px;line-height:1.5;color:#555;text-align:center">Class times subject to change.<br>${esc(FWC_FOOT)}</td></tr>
 </table></td></tr></table></body></html>`;
