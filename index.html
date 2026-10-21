@@ -1875,6 +1875,8 @@ function nonInviteText(note){
     `\n\nBE A MEMBER: ${peso(d.fee)} for ${MEMBER_MONTHS} months.\n`+d.perks.map(p=>"✓ "+p).join("\n")+
     `\nMessage our Facebook page Footwork PH and say "apply as a member".\n\n${FWC_FOOT}`;
 }
+/* email saved in the Email field, or typed in Notes/Contact */
+const emailOf = m => { const e=(m.email||"").trim(); if(EMAIL_RX.test(e)) return e; const f=String((m.notes||"")+" "+(m.contact||"")).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/); return f?f[0]:""; };
 function sendNonDlg(){
   if(!mailReady()){
     openDlg("Set up email first", `<p>Email sending is not set up yet. Paste your Web app URL in Settings › Email setup first.</p>`,
@@ -1883,8 +1885,8 @@ function sendNonDlg(){
   }
   const byName=(a,b)=>a.name.localeCompare(b.name);
   const all = S.members.filter(m=>m.type!=="member").sort(byName);
-  const withMail = all.filter(m=>EMAIL_RX.test((m.email||"").trim())), noMail = all.filter(m=>!EMAIL_RX.test((m.email||"").trim()));
-  const rcp = m => `<label class="rcp"><input type="checkbox" data-rcp="${m.id}" checked><span class="nm"><b>${esc(m.name)}</b><br><span class="small muted">${esc(m.email.trim())}</span></span></label>`;
+  const withMail = all.filter(m=>emailOf(m)), noMail = all.filter(m=>!emailOf(m));
+  const rcp = m => `<label class="rcp"><input type="checkbox" data-rcp="${m.id}" checked><span class="nm"><b>${esc(m.name)}</b><br><span class="small muted">${esc(emailOf(m))}${(m.email||"").trim()?"":" · from notes"}</span></span></label>`;
   const subj0 = "Book your slot at Footwork PH 💃";
   openDlg("Email non-members", `
     <p class="small muted" style="margin:0 0 10px">Sends the guest booking link, how to book, rates, non-member packages, and an invite to become a member.</p>
@@ -1897,7 +1899,7 @@ function sendNonDlg(){
     <p class="small muted" style="margin:10px 0 0">Each person gets their own email from your studio Gmail.</p>`,
   { saveLabel:"Send", onSave:()=>{
       const ids=[...document.querySelectorAll("#dlgBody [data-rcp]:checked")].map(x=>x.dataset.rcp);
-      const to=[...new Set(ids.map(id=>(member(id)?.email||"").trim().toLowerCase()).filter(e=>EMAIL_RX.test(e)))];
+      const to=[...new Set(ids.map(id=>emailOf(member(id)||{}).toLowerCase()).filter(e=>EMAIL_RX.test(e)))];
       if(!to.length){ toast("Tick at least one person"); return false; }
       if(!navigator.onLine){ toast("You're offline. Connect to the internet first."); return false; }
       const btn=document.getElementById("dlgSave"); btn.disabled=true; btn.textContent="Sending…";
