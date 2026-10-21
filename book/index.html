@@ -257,7 +257,7 @@ function card(s){
   return `<div class="cls${s.mine?" mine":""}">
     <div class="tm">${ft.t}<small>${ft.ap}</small></div>
     <div>
-      <div class="row"><div class="cn">${esc(s.class)}</div>${btn}</div>
+      <div class="row"><div class="cn">${esc(s.class)}${s.free?` <span class="pill lime">FREE</span>`:""}</div>${btn}</div>
       ${s.coach?`<div class="co">with ${esc(s.coach)}</div>`:""}
       <div class="bar"><i style="width:${pct}%"></i></div>
       <div class="small ${left<=2&&left>0?"":"muted"}" style="${left<=2&&left>0?"color:var(--warn);font-weight:700":""}">${left>0?`${left} of ${s.capacity} slots left`:"No slots left"}</div>
@@ -274,7 +274,7 @@ function bookSheet(s){
   openSheet(`<h3>Book this class?</h3>
     <div class="kv"><b>Class</b><span>${esc(s.class)}</span><b>When</b><span>${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}</span>${s.coach?`<b>Coach</b><span>${esc(s.coach)}</span>`:""}<b>Slots</b><span>${Math.max(0,s.capacity-s.taken)} of ${s.capacity} left</span></div>
     <ul class="rules">
-      <li>Your slot is <b>reserved</b> now and <b>confirmed once you pay</b>.</li>
+      ${s.free?`<li>This class is <b>FREE</b>. No payment needed. Your slot is <b>confirmed right away</b>.</li>`:`<li>Your slot is <b>reserved</b> now and <b>confirmed once you pay</b>.</li>`}
       <li>Booking and cancelling close <b>${data.cutoffHours} hours</b> before class.</li>
       <li>Bring your membership card. Show it at the counter for your points and discount.</li>
     </ul>
@@ -287,8 +287,21 @@ function bookSheet(s){
     if(!r.ok){ $("bkErr").textContent = ERR[r.error]||ERR.network; $("bkErr").hidden=false; $("bkGo").disabled=false; $("bkGo").textContent="Confirm booking"; if(["full","closed","already","no_session"].includes(r.error)) load(true); return; }
     await load(true);
     const ns = data.sessions.find(x=>x.id===s.id) || s;
+    if(r.free || s.free){ freeSheet(ns, r.ref); return; }
     paySheet(ns, r.ref, true);
   };
+}
+function freeSheet(s, ref){
+  const ft = fmtTime(s.time);
+  openSheet(`<h3>You're booked! 🎉</h3>
+    <p class="muted">${esc(s.class)} · ${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}${s.coach?` · ${esc(s.coach)}`:""}</p>
+    <p class="small muted" style="margin-top:12px">Booking ref</p><div class="ref">${esc(ref||s.booking_ref||"")}</div>
+    <ul class="rules">
+      <li><span class="pill lime">Confirmed ✓</span> This class is free. No payment needed.</li>
+      <li>Bring your membership card. Show it at the counter for your points.</li>
+      <li>Can't make it? Cancel here so another member can take your slot.</li>
+    </ul>
+    <button class="btn block" style="margin-top:6px" data-close>Done</button>`);
 }
 function paySheet(s, ref, fresh){
   const ft = fmtTime(s.time);
@@ -435,7 +448,7 @@ function gCard(s){
   return `<div class="cls">
     <div class="tm">${ft.t}<small>${ft.ap}</small></div>
     <div>
-      <div class="row"><div class="cn">${esc(s.class)}</div>${btn}</div>
+      <div class="row"><div class="cn">${esc(s.class)}${s.free?` <span class="pill lime">FREE</span>`:""}</div>${btn}</div>
       ${s.coach?`<div class="co">with ${esc(s.coach)}</div>`:""}
       <div class="bar"><i style="width:${pct}%"></i></div>
       <div class="small muted">${left>0?`${left} of ${s.capacity} slots left`:"No slots left"}${s.guest_soon&&left>0?` · Guest booking opens ${esc(opens)}`:""}</div>
@@ -451,7 +464,7 @@ function gBookSheet(s){
       <label for="gFb">Facebook / Messenger name</label><input type="text" id="gFb" maxlength="80" required>
       <label for="gEmail">Email (optional)</label><input type="text" id="gEmail" inputmode="email" maxlength="120" autocomplete="email">
       <ul class="rules">
-        <li>Strictly by appointment. Your slot is <b>confirmed once you pay</b>.</li>
+        ${s.free?`<li>This class is <b>FREE</b>. No payment needed. Your slot is <b>confirmed right away</b>.</li>`:`<li>Strictly by appointment. Your slot is <b>confirmed once you pay</b>.</li>`}
         <li>First-timers sign a short waiver at the studio before class.</li>
         <li>Late arrivals join the class where it is. The warm-up won't be repeated.</li>
         <li>Aero Step: check your free step board before class starts.</li>
@@ -474,7 +487,7 @@ function gBookSheet(s){
     const r = await rpc("fw_guest_book", {p_session:s.id, p_name:name, p_mobile:mob, p_email:em, p_fb:fb, p_agreed:true});
     if(!r.ok){ err(GERR[r.error]||ERR.network); $("gGo").disabled=false; $("gGo").textContent="Reserve my slot"; if(["full","closed","already","no_session","members_only"].includes(r.error)) loadGuest(true); return; }
     const when = s.date+"T"+s.time+":00+08:00";
-    const b = {ref:r.ref, cls:s.class, when, coach:s.coach, name};
+    const b = {ref:r.ref, cls:s.class, when, coach:s.coach, name, free:!!(r.free||s.free)};
     gSet([...gGet().filter(x=>x.ref!==b.ref), b]);
     loadGuest(true); gDone(b, true);
   };
@@ -482,7 +495,10 @@ function gBookSheet(s){
 function gDone(b, fresh){
   openSheet(`<p class="small" style="margin:0 0 4px;color:var(--lime);font-weight:700">📸 SCREENSHOT THIS PAGE</p>
     <h3>${fresh?"Slot reserved!":"Your booking"}</h3>
-    <div class="kv"><b>Ref</b><span class="ref" style="font-size:28px">${esc(b.ref)}</span><b>Name</b><span>${esc(b.name)}</span><b>Class</b><span>${esc(b.cls)}</span><b>When</b><span>${esc(fmtWhen(b.when))}</span>${b.coach?`<b>Coach</b><span>${esc(b.coach)}</span>`:""}<b>Status</b><span><span class="pill warn">Waiting for payment</span></span></div>
+    <div class="kv"><b>Ref</b><span class="ref" style="font-size:28px">${esc(b.ref)}</span><b>Name</b><span>${esc(b.name)}</span><b>Class</b><span>${esc(b.cls)}</span><b>When</b><span>${esc(fmtWhen(b.when))}</span>${b.coach?`<b>Coach</b><span>${esc(b.coach)}</span>`:""}<b>Status</b><span>${b.free?`<span class="pill lime">Confirmed ✓ · FREE</span>`:`<span class="pill warn">Waiting for payment</span>`}</span></div>
+    ${b.free?`<ul class="rules"><li>This class is free. <b>No payment needed.</b></li><li>Show this screenshot at the studio counter.</li><li>First-timers sign a short waiver at the studio before class.</li></ul>
+    ${upsell()}
+    <button class="btn block" style="margin-top:16px" data-close>Done</button>`:`
     <div class="rules" style="border-color:var(--pink)">
       <div style="font-weight:700;margin-bottom:6px">Pay via GCash or Maya</div>
       <div style="font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-weight:900;font-style:italic;font-size:30px;color:var(--lime);line-height:1">${esc(G.payNumber)}</div>
@@ -497,8 +513,8 @@ function gDone(b, fresh){
     </ol>
     <p class="small muted">Your slot is confirmed once we verify your payment.</p>
     ${upsell()}
-    <button class="btn block" style="margin-top:16px" data-close>Done</button>`);
-  $("gCopy").onclick = ()=>{ try{ navigator.clipboard.writeText(G.payNumber.replace(/\D/g,"")).then(()=>toast("Number copied")); }catch(e){ toast(G.payNumber); } };
+    <button class="btn block" style="margin-top:16px" data-close>Done</button>`}`);
+  if($("gCopy")) $("gCopy").onclick = ()=>{ try{ navigator.clipboard.writeText(G.payNumber.replace(/\D/g,"")).then(()=>toast("Number copied")); }catch(e){ toast(G.payNumber); } };
 }
 document.addEventListener("click", e=>{
   const b = e.target.closest("[data-gbook],[data-gshow],[data-gtype]"); if(!b || !G) return;
