@@ -1812,6 +1812,113 @@ function sendSchedDlg(){
   const upd=()=>{ const k=body.querySelectorAll("[data-rcp]:checked").length; document.getElementById("dlgSave").textContent = k?`Send to ${k}`:"Send"; };
   body.onchange=upd; upd();
 }
+/* ---------- invite email for non-members ---------- */
+const GUEST_URL = BOOK_URL + "#guest";
+const PAY_LINE = "GCash or Maya 0933-855-2646 (Anjeleen P.)";
+function nonInviteData(){
+  const R=S.settings.rates, p=S.settings.promo, today=todayISO();
+  const promo = p.active && isSet(R.nonMember.promo) && (!p.ends || p.ends>=today) ? {non:+R.nonMember.promo, mem:+R.member.promo, ends:p.ends} : null;
+  const regNon = t => isSet(t.nonRate)?+t.nonRate:+R.nonMember.reg, regMem = t => isSet(t.memRate)?+t.memRate:+R.member.reg;
+  const rates = S.settings.classTypes.filter(t=>!t.free).map(t=>({name:t.name, non:regNon(t), mem:regMem(t)}));
+  const tn = ids => (ids||[]).map(id=>ctype(id)?.name).filter(Boolean).join(" · ") || "Any class";
+  const same = (a,b) => (a||[]).slice().sort().join()===(b||[]).slice().sort().join();
+  const packs = S.settings.plans.filter(x=>x.for==="nonmember").map(x=>{ const m=S.settings.plans.find(y=>y.for==="member" && same(y.typeIds,x.typeIds) && +y.sessions===+x.sessions);
+    return {name:tn(x.typeIds), sessions:+x.sessions, days:+x.days, price:+x.price, mem:m?+m.price:null}; });
+  return {promo, rates, packs, fee:+R.membershipFee.reg||500, perks:CARD_PERKS};
+}
+function nonInviteHtml(note){
+  const d=nonInviteData(), F="font-family:Arial,Helvetica,sans-serif;", P="#FA1294", L="#B4FA2A", G="#E8157F";
+  const h3 = t => `<tr><td style="${F}padding:22px 20px 8px;font-size:16px;font-weight:900;color:${G};letter-spacing:.5px">${t}</td></tr>`;
+  const td = (t,s="") => `<td style="${F}padding:7px 10px;font-size:14px;color:#111;border-bottom:1px solid #eee;${s}">${t}</td>`;
+  const th = t => `<td style="${F}padding:6px 10px;font-size:11px;font-weight:800;color:#777;letter-spacing:.5px;border-bottom:2px solid #111">${t}</td>`;
+  const btn = `<a href="${GUEST_URL}" target="_blank" style="${F}display:inline-block;background:#111;color:${L};font-size:18px;font-weight:900;letter-spacing:1px;text-decoration:none;padding:16px 32px;border-radius:999px;border:3px solid ${L}">BOOK YOUR SLOT</a>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;padding:0;background:#f3f0f5">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f0f5"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:3px solid ${P};border-radius:14px;overflow:hidden">
+<tr><td style="${F}background:#111111;padding:24px 16px;text-align:center"><div style="font-size:30px;font-weight:900;font-style:italic;letter-spacing:1px"><span style="color:#fff">FOOT</span><span style="color:${P}">WORK</span> <span style="color:${L}">PH</span></div><div style="font-size:13px;font-weight:800;color:${L};margin-top:6px;letter-spacing:2px">DANCE FITNESS STUDIO · BINANGONAN, RIZAL</div><div style="font-size:20px;font-weight:800;color:#fff;margin-top:10px">Your slot is waiting! 💃</div></td></tr>
+${note?`<tr><td style="${F}padding:20px 20px 0;font-size:15px;line-height:1.55;color:#222">${esc(note).replace(/\n/g,"<br>")}</td></tr>`:""}
+<tr><td style="${F}padding:18px 20px 0;font-size:15px;line-height:1.55;color:#222">Thank you for registering with Footwork PH! Classes are <b>strictly by booking</b>, so reserve your slot online before you come to the studio.</td></tr>
+${d.promo?`<tr><td style="padding:18px 20px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111;border-radius:12px"><tr><td style="${F}padding:16px;text-align:center"><div style="font-size:12px;font-weight:800;color:${L};letter-spacing:2px">OPENING PROMO${d.promo.ends?` · UNTIL ${esc(fmtDate(d.promo.ends).toUpperCase())}`:""}</div><div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.non)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · all classes</span></div><div style="font-size:13px;color:${L};margin-top:4px">Members pay only ${peso(d.promo.mem)}</div></td></tr></table></td></tr>`:""}
+<tr><td align="center" style="padding:22px 20px 6px">${btn}<div style="${F}font-size:12px;color:#555;margin-top:8px;word-break:break-all">${GUEST_URL}</div></td></tr>
+${h3("HOW TO BOOK YOUR SLOT")}
+<tr><td style="${F}padding:0 20px;font-size:14px;line-height:1.65;color:#222">
+1. Tap <b>Book Your Slot</b> above.<br>
+2. Find your class and tap <b>Book</b>. Guest booking opens <b>24 hours before</b> each class. Members book first.<br>
+3. Type your full name, mobile number and Facebook name. Tick <b>I agree</b>, then tap <b>Reserve my slot</b>.<br>
+4. Pay your class fee via <b>${PAY_LINE}</b>. Free classes need no payment.<br>
+5. Screenshot your booking and your payment receipt. Send both to our Facebook page <b>Footwork PH</b>.<br>
+6. Your slot is confirmed once we verify your payment. Max 10 per class, so book early!</td></tr>
+${h3("REGULAR RATES PER SESSION"+(d.promo&&d.promo.ends?` <span style="font-size:12px;color:#777;font-weight:700">(after the promo)</span>`:""))}
+<tr><td style="padding:0 20px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${th("CLASS")}${th("NON-MEMBER")}${th("MEMBER")}</tr>
+${d.rates.map(r=>`<tr>${td(`<b>${esc(r.name)}</b>`)}${td(peso(r.non))}${td(`<b style="color:${G}">${peso(r.mem)}</b>`)}</tr>`).join("")}</table></td></tr>
+${d.packs.length?`${h3("5-SESSION PACKAGES")}
+<tr><td style="padding:0 20px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${th("PACKAGE")}${th("NON-MEMBER")}${th("MEMBER")}</tr>
+${d.packs.map(x=>`<tr>${td(`<b>${esc(x.name)}</b><br><span style="font-size:12px;color:#777">${x.sessions} sessions · use within ${x.days} days</span>`)}${td(peso(x.price))}${td(x.mem!=null?`<b style="color:${G}">${peso(x.mem)}</b>`:"—")}</tr>`).join("")}</table>
+<p style="${F}font-size:12px;color:#777;margin:8px 0 0">Same class type, for the named person only. To buy a package, message our Facebook page <b>Footwork PH</b>.</p></td></tr>`:""}
+<tr><td style="padding:22px 20px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${L};border-radius:12px"><tr><td style="${F}padding:18px">
+<div style="font-size:22px;font-weight:900;font-style:italic;color:#111">BE A MEMBER &amp; SAVE MORE!</div>
+<div style="font-size:15px;color:#111;margin-top:4px">Only <b>${peso(d.fee)} for ${MEMBER_MONTHS} months</b>. Your membership pays for itself after 10 sessions.</div>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:10px">${d.perks.map(p=>`<tr><td style="${F}padding:3px 8px 3px 0;font-size:14px;color:${G};font-weight:900;vertical-align:top">✓</td><td style="${F}padding:3px 0;font-size:14px;color:#111">${esc(p)}</td></tr>`).join("")}</table>
+<div style="${F}font-size:14px;color:#111;margin-top:12px;line-height:1.55"><b>How to join:</b> Message our Facebook page <b>Footwork PH</b> and say <b>"apply as a member"</b>. Pay ${peso(d.fee)} via ${PAY_LINE}. Claim your member ID card at the studio.</div>
+</td></tr></table></td></tr>
+<tr><td style="${F}padding:22px 20px 10px;font-size:14px;line-height:1.55;color:#222;text-align:center">See you on the dance floor! 💗💚</td></tr>
+<tr><td style="${F}padding:14px 16px;font-size:12px;line-height:1.5;color:#555;text-align:center;border-top:1px solid #eee">Rates may change. Strictly by appointment.<br>${esc(FWC_FOOT)}</td></tr>
+</table></td></tr></table></body></html>`;
+}
+function nonInviteText(note){
+  const d=nonInviteData();
+  return (note?note+"\n\n":"")+`FOOTWORK PH · Your slot is waiting!\n\nClasses are strictly by booking. Reserve your slot here:\n${GUEST_URL}\n\n`+
+    (d.promo?`OPENING PROMO: ${peso(d.promo.non)} per session, all classes${d.promo.ends?` until ${fmtDate(d.promo.ends)}`:""}.\n\n`:"")+
+    `HOW TO BOOK:\n1. Open the link above.\n2. Find your class and tap Book. Guest booking opens 24 hours before each class.\n3. Type your name, mobile and Facebook name. Tick I agree, then Reserve my slot.\n4. Pay via ${PAY_LINE}. Free classes need no payment.\n5. Send your booking and payment screenshots to our Facebook page Footwork PH.\n\n`+
+    `RATES PER SESSION (non-member / member):\n`+d.rates.map(r=>`• ${r.name}: ${peso(r.non)} / ${peso(r.mem)}`).join("\n")+
+    (d.packs.length?`\n\n5-SESSION PACKAGES (non-member / member):\n`+d.packs.map(x=>`• ${x.name}: ${peso(x.price)}${x.mem!=null?" / "+peso(x.mem):""}`).join("\n"):"")+
+    `\n\nBE A MEMBER: ${peso(d.fee)} for ${MEMBER_MONTHS} months.\n`+d.perks.map(p=>"✓ "+p).join("\n")+
+    `\nMessage our Facebook page Footwork PH and say "apply as a member".\n\n${FWC_FOOT}`;
+}
+function sendNonDlg(){
+  if(!mailReady()){
+    openDlg("Set up email first", `<p>Email sending is not set up yet. Paste your Web app URL in Settings › Email setup first.</p>`,
+      {saveLabel:"Go to setup", onSave:()=>{ tab="settings"; setTimeout(()=>{ render(); const el=document.getElementById("mailSetup"); if(el) el.scrollIntoView(); },0); }});
+    return;
+  }
+  const byName=(a,b)=>a.name.localeCompare(b.name);
+  const all = S.members.filter(m=>m.type!=="member").sort(byName);
+  const withMail = all.filter(m=>EMAIL_RX.test((m.email||"").trim())), noMail = all.filter(m=>!EMAIL_RX.test((m.email||"").trim()));
+  const rcp = m => `<label class="rcp"><input type="checkbox" data-rcp="${m.id}" checked><span class="nm"><b>${esc(m.name)}</b><br><span class="small muted">${esc(m.email.trim())}</span></span></label>`;
+  const subj0 = "Book your slot at Footwork PH 💃";
+  openDlg("Email non-members", `
+    <p class="small muted" style="margin:0 0 10px">Sends the guest booking link, how to book, rates, non-member packages, and an invite to become a member.</p>
+    <label class="f">Subject<input id="mn_subj" value="${esc(subj0)}"></label>
+    <label class="f">Short message (optional)<textarea id="mn_note" rows="3" placeholder="e.g. Hi! Our grand opening is on Nov 7. See you there!"></textarea></label>
+    <h3 style="margin:6px 0 2px">Non-members (${withMail.length})</h3>
+    ${withMail.length?`<div class="row" style="margin:4px 0"><button type="button" class="btn sm ghost" id="mn_all">Tick all</button><button type="button" class="btn sm ghost" id="mn_none">Untick all</button></div>${withMail.map(rcp).join("")}`:`<p class="small muted">No non-member has an email saved yet.</p>`}
+    ${noMail.length?`<p class="small muted" style="margin:8px 0 0">No email saved, so they won't get it: ${noMail.map(m=>esc(m.name)).join(", ")}.</p>`:""}
+    <details style="margin-top:12px"><summary class="small"><b>Preview email</b></summary><iframe class="mailprev" id="mn_prev" sandbox="" title="Email preview"></iframe></details>
+    <p class="small muted" style="margin:10px 0 0">Each person gets their own email from your studio Gmail.</p>`,
+  { saveLabel:"Send", onSave:()=>{
+      const ids=[...document.querySelectorAll("#dlgBody [data-rcp]:checked")].map(x=>x.dataset.rcp);
+      const to=[...new Set(ids.map(id=>(member(id)?.email||"").trim().toLowerCase()).filter(e=>EMAIL_RX.test(e)))];
+      if(!to.length){ toast("Tick at least one person"); return false; }
+      if(!navigator.onLine){ toast("You're offline. Connect to the internet first."); return false; }
+      const btn=document.getElementById("dlgSave"); btn.disabled=true; btn.textContent="Sending…";
+      const note=document.getElementById("mn_note").value.trim();
+      mailPost({to, subject:val("mn_subj")||subj0, html:nonInviteHtml(note), text:nonInviteText(note)})
+        .then(r=>{
+          if(!r || !r.ok) throw new Error((r&&r.error)||"Not sent");
+          dlg.close(); toast(`Sent to ${r.sent} ${r.sent===1?"person":"people"}`+(r.failed&&r.failed.length?` · ${r.failed.length} failed`:""));
+        })
+        .catch(err=>{ btn.disabled=false; btn.textContent="Send"; toast("Not sent: "+(err&&err.message||"check your connection")); });
+      return false;
+    } });
+  const body=document.getElementById("dlgBody");
+  const setAll = on => withMail.forEach(m=>{ const c=body.querySelector(`[data-rcp="${m.id}"]`); if(c) c.checked=on; });
+  const a=document.getElementById("mn_all"), n=document.getElementById("mn_none");
+  if(a) a.onclick=()=>setAll(true); if(n) n.onclick=()=>setAll(false);
+  const drawPrev=()=>{ const f=document.getElementById("mn_prev"); if(f) f.srcdoc=nonInviteHtml(document.getElementById("mn_note").value.trim()); };
+  drawPrev(); document.getElementById("mn_note").oninput=drawPrev;
+  const upd=()=>{ const k=body.querySelectorAll("[data-rcp]:checked").length; document.getElementById("dlgSave").textContent = k?`Send to ${k}`:"Send"; };
+  body.onchange=upd; upd();
+}
 function mailScript(){
   if(!S.settings.mail.key){ S.settings.mail.key = uid()+uid()+uid(); save(); }
   return `// Footwork PH - schedule email sender
@@ -1903,6 +2010,7 @@ function vMembers(){
   return `<div class="row between" style="margin-bottom:12px"><h2>Students</h2><button class="btn" data-act="${isMem?"newMember":"newNon"}">${isMem?"Add member":"Add non-member"}</button></div>
   <div class="seg" role="group" aria-label="Student type"><button data-seg="member" aria-pressed="${isMem}">Members (${cm})</button><button data-seg="nonmember" aria-pressed="${!isMem}">Non-members (${cn})</button></div>
   <p class="small muted" style="margin:-4px 0 12px">${isMem?`Paid the membership fee. Session rate: ${peso(rate("member"))} or their package.`:`No membership fee. Pays per session: ${peso(rate("nonMember"))}.`}</p>
+  ${isMem?"":`<div class="row" style="margin:-4px 0 14px"><button type="button" class="btn lime" data-act="sendNon">Email non-members: booking link &amp; rates</button></div>`}
   ${isMem?"":interestSummary()}
   <label class="f" style="margin-bottom:14px">Search<input id="mq" type="search" value="${esc(peopleQ)}" placeholder="Name, contact, or member no."></label>
   ${isMem&&cm?`<div class="row" style="margin:-4px 0 14px"><button type="button" class="btn sm ghost" data-act="scan">Scan member card</button><button type="button" class="btn sm" data-act="cardsPick">🪪 Print membership cards</button><button type="button" class="btn sm ghost" data-act="qrZip">Download all card QR codes</button></div>`:""}
@@ -2757,6 +2865,7 @@ function handleAct(b){
   else if(a==="copyWeek") copyLastWeek();
   else if(a==="copyViber"){ const ws=curWeek(); if(!weekSessions(ws).length) toast("No classes this week yet"); else copyText(schedText(ws),"Schedule copied. Paste it in Viber."); }
   else if(a==="sendSched") sendSchedDlg();
+  else if(a==="sendNon") sendNonDlg();
   else if(a==="copyScript") copyText(mailScript(),"Script copied");
   else if(a==="mailTest") mailTest();
   else if(a==="setStatus"){ ses().instStatus=b.dataset.v; save(); toast(b.dataset.v==="absent"?"Marked absent":"Marked present"); reRender(); }
