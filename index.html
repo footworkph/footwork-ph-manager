@@ -582,28 +582,41 @@ function mergeFormRow(r){
     if(otherInts.length) lines.push("Interested in: "+otherInts.join(", "));
     lines.push(...extra);
     if(lines.length) m.notes = [m.notes, `Google Form update ${day}: `+lines.join(" · ")].filter(Boolean).join("\n");
-    return "updated";
+    return formPaid(m, r) || "updated";
   }
-  S.members.push({id:uid(), type:"nonmember", name:r.name, contact:r.contact||"", email:r.email||"", birthday:r.birthday||"",
+  const nm = {id:uid(), type:"nonmember", name:r.name, contact:r.contact||"", email:r.email||"", birthday:r.birthday||"",
     ecName:"", ecNo:"", interests:ints, planId:"", planType:"", startDate:day, paid:0, paidDate:"",
-    notes:[`Registered via Google Form (${day})`, ...extra, otherInts.length && "Interested in: "+otherInts.join(", ")].filter(Boolean).join("\n")});
-  return "added";
+    notes:[`Registered via Google Form (${day})`, ...extra, otherInts.length && "Interested in: "+otherInts.join(", "),
+      r.signup==="Member" && !r.paid && "Applied as member on the form. Not paid yet."].filter(Boolean).join("\n")};
+  S.members.push(nm);
+  return formPaid(nm, r) || "added";
+}
+/* "Payment verified" ticked in the sheet: make them a member with the next member no. */
+function formPaid(m, r){
+  if(!r.paid) return "";
+  const from = r.paid_on || todayISO();
+  if(m.type==="member" && !cardExpired(m)) return "";   /* already an active member: nothing to change */
+  joinMembership(m, r.fee!=null && r.fee!=="" ? r.fee : rate("membershipFee"), from);
+  m.feeDate = from;
+  const pay = [r.pay_method, r.pay_ref && "Ref "+r.pay_ref].filter(Boolean).join(" · ");
+  m.notes = [m.notes, `Payment verified ${from}${pay?" ("+pay+")":""}. Now member ${m.memberNo}.`].filter(Boolean).join("\n");
+  return "joined";
 }
 async function importFormInbox(){
   if(!sb || !sbUser || importing || pendingSave || dlg.open) return;
   importing = true;
   try{
-    const q = await sb.from("fw_form_inbox").select("id,name,contact,viber,email,fb,birthday,address,interests,signup")
+    const q = await sb.from("fw_form_inbox").select("id,name,contact,viber,email,fb,birthday,address,interests,signup,paid,fee,pay_method,pay_ref,paid_on")
       .is("imported_at", null).order("created_at").limit(100);
     if(q.error || !q.data || !q.data.length) return;
-    let added = 0, updated = 0;
-    q.data.forEach(r=>{ if(mergeFormRow(r)==="added") added++; else updated++; });
+    let added = 0, updated = 0, joined = 0;
+    q.data.forEach(r=>{ const k = mergeFormRow(r); if(k==="added") added++; else if(k==="joined") joined++; else updated++; });
     try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
     lsSet(LS_DIRTY,"1");
     await cloudPush(); lsSet(LS_DIRTY,"");
     await sb.from("fw_form_inbox").update({imported_at:new Date().toISOString()}).in("id", q.data.map(r=>r.id));
     if(!dlg.open) render();
-    toast(`Google Form: ${added} new student${added===1?"":"s"}${updated?`, ${updated} updated`:""}`);
+    toast("Google Form: "+[added && `${added} new student${added===1?"":"s"}`, joined && `${joined} new member${joined===1?"":"s"}`, updated && `${updated} updated`].filter(Boolean).join(", "));
   }catch(e){ /* try again on the next sync */ }
   finally{ importing = false; }
 }
