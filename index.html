@@ -544,7 +544,69 @@ async function syncNow(manual){
   }finally{ syncing = false; }
 }
 
-async function syncTick(manual){ const ok = await syncNow(manual); autoLapse(); loadBookings(); return ok; }
+async function syncTick(manual){ const ok = await syncNow(manual); autoLapse(); if(ok) await importFormInbox(); loadBookings(); return ok; }
+
+/* ---------- Google Form registrations -> students (one record per contact number or email) ---------- */
+let importing = false;
+function formInterestIds(list){
+  const types = S.settings.classTypes || [], ids = [];
+  const pick = re => { const t = types.find(x=>re.test(x.name||"")); if(t && !ids.includes(t.id)) ids.push(t.id); };
+  (list||[]).forEach(raw=>{
+    const s = String(raw).toLowerCase();
+    if(s.includes("aero")) pick(/aero/i);
+    else if(s.includes("zumba")) pick(/^zumba$/i);
+    else if(s.includes("kid")) pick(/kid/i);
+    else if(s.includes("hip")) pick(/hip\s*hop/i);
+    else if(s.includes("k-pop") || s.includes("kpop")) pick(/k-?pop/i);
+    else if(s.includes("femme")) pick(/femme/i);
+    else { const t = types.find(x=>(x.name||"").toLowerCase()===s); if(t && !ids.includes(t.id)) ids.push(t.id); }
+  });
+  return ids;
+}
+function mergeFormRow(r){
+  const digits = v => String(v||"").replace(/\D/g,"").slice(-10);
+  const ph = digits(r.contact), em = String(r.email||"").trim().toLowerCase();
+  const m = S.members.find(x=>(ph.length===10 && digits(x.contact)===ph) || (em && String(x.email||"").trim().toLowerCase()===em));
+  const day = todayISO();
+  const extra = [r.fb && "FB: "+r.fb, r.viber && !/^same$/i.test(r.viber) && digits(r.viber)!==ph && "Viber: "+r.viber, r.address && "Address: "+r.address]
+    .filter(Boolean).filter(t=>!(m && (m.notes||"").includes(t)));
+  const ints = formInterestIds(r.interests);
+  const otherInts = (r.interests||[]).filter(x=>!formInterestIds([x]).length && !/studio rental/i.test(x));
+  if(m){
+    const lines = [];
+    if(r.contact){ if(!digits(m.contact)) m.contact = r.contact; else if(ph && digits(m.contact)!==ph && !(m.notes||"").includes(r.contact)) lines.push("Other number: "+r.contact); }
+    if(em){ const old = String(m.email||"").trim().toLowerCase(); if(!old) m.email = r.email; else if(old!==em && !(m.notes||"").includes(r.email)) lines.push("Other email: "+r.email); }
+    if(r.birthday && !m.birthday) m.birthday = r.birthday;
+    m.interests = [...new Set([...(m.interests||[]), ...ints])];
+    if(r.name && r.name.trim().toLowerCase()!==String(m.name||"").trim().toLowerCase()) lines.push(`Also registered as "${r.name}"`);
+    if(otherInts.length) lines.push("Interested in: "+otherInts.join(", "));
+    lines.push(...extra);
+    if(lines.length) m.notes = [m.notes, `Google Form update ${day}: `+lines.join(" · ")].filter(Boolean).join("\n");
+    return "updated";
+  }
+  S.members.push({id:uid(), type:"nonmember", name:r.name, contact:r.contact||"", email:r.email||"", birthday:r.birthday||"",
+    ecName:"", ecNo:"", interests:ints, planId:"", planType:"", startDate:day, paid:0, paidDate:"",
+    notes:[`Registered via Google Form (${day})`, ...extra, otherInts.length && "Interested in: "+otherInts.join(", ")].filter(Boolean).join("\n")});
+  return "added";
+}
+async function importFormInbox(){
+  if(!sb || !sbUser || importing || pendingSave || dlg.open) return;
+  importing = true;
+  try{
+    const q = await sb.from("fw_form_inbox").select("id,name,contact,viber,email,fb,birthday,address,interests,signup")
+      .is("imported_at", null).order("created_at").limit(100);
+    if(q.error || !q.data || !q.data.length) return;
+    let added = 0, updated = 0;
+    q.data.forEach(r=>{ if(mergeFormRow(r)==="added") added++; else updated++; });
+    try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
+    lsSet(LS_DIRTY,"1");
+    await cloudPush(); lsSet(LS_DIRTY,"");
+    await sb.from("fw_form_inbox").update({imported_at:new Date().toISOString()}).in("id", q.data.map(r=>r.id));
+    if(!dlg.open) render();
+    toast(`Google Form: ${added} new student${added===1?"":"s"}${updated?`, ${updated} updated`:""}`);
+  }catch(e){ /* try again on the next sync */ }
+  finally{ importing = false; }
+}
 
 /* ---------- sign in ---------- */
 const gate = document.getElementById("gate");
