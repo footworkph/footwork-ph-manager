@@ -1737,7 +1737,7 @@ function vDash(){
     ${alerts.map(x=>`<div class="alert"><b>${esc(x.m.name)}</b> — ${x.st.status}${x.st.left!==null?` · ${x.st.left} sessions left`:""}${x.st.exp?` · ends ${fmtDate(x.st.exp)}`:""}</div>`).join("")}
     ${low.map(o=>`<div class="alert"><b>${esc(o.x.name)}</b> — low stock (${o.st} left)</div>`).join("")}</div>`:""}
   <div class="card"><div class="row between" style="margin-bottom:6px"><h3>Coming up</h3><button class="btn sm" data-act="newSession">Add class</button></div>
-  ${upcoming.length||upRent.length?`<ul class="list">${upcoming.map(s=>`<li><div class="row between"><span><b>${fmtDate(s.date)}</b> ${fmtTime(s.time)} · ${esc(typeName(s))}</span><span class="muted small">${esc(instr(s.instructorId)?.name||"No instructor")} · ${(s.attendees||[]).length}/${S.settings.capacity}</span></div></li>`).join("")}
+  ${upcoming.length||upRent.length?`<ul class="list">${upcoming.map(s=>`<li><div class="row between"><span><b>${fmtDate(s.date)}</b> ${fmtTime(s.time)} · ${esc(typeName(s))}</span><span class="muted small">${esc(instr(s.instructorId)?.name||"No instructor")} · ${slotsTaken(s)}/${S.settings.capacity} pax${slotsTaken(s)>=+S.settings.capacity?" · FULL":""}</span></div></li>`).join("")}
     ${upRent.map(x=>`<li><div class="row between"><span><b>${fmtDate(x.date)}</b> ${fmtTime(x.time)} · Rental</span><span class="muted small">${esc(x.renter)} · ${(+x.hours||0)+(+x.extHours||0)} hrs</span></div></li>`).join("")}</ul>`:`<p class="empty">Nothing scheduled yet.</p>`}
   </div>`;
 }
@@ -2606,7 +2606,7 @@ function scanDlg(preId){
         text:(m.validUntil ? `Expired ${fmtDate(m.validUntil)}. ` : "")+"Not checked in.", via, btn:"non", btnLabel:`Check in as non-member (${peso(rate("nonMember"))})`});
       return;
     }
-    const over = s.attendees.length >= +S.settings.capacity;
+    const over = slotsTaken(s) > +S.settings.capacity;
     const pr = priceFor(m, s, active?"member":"nonmember");
     const amount = Math.round(pr.amount*100)/100;
     s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind:active?"member":"nonmember", amount, via, at:new Date().toISOString()}, pr.pkg?{pkg:true}:{}));
