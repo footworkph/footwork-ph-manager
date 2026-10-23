@@ -484,7 +484,7 @@ function gBookSheet(s){
       <label for="gName">Full name</label><input type="text" id="gName" maxlength="80" autocomplete="name" required>
       <label for="gMob">Mobile number</label><input type="tel" id="gMob" inputmode="tel" placeholder="09xx xxx xxxx" autocomplete="tel" required>
       <label for="gFb">Facebook / Messenger name</label><input type="text" id="gFb" maxlength="80" required>
-      <label for="gEmail">Email (to get your confirmation)</label><input type="text" id="gEmail" inputmode="email" maxlength="120" autocomplete="email">
+      <label for="gEmail">Email (we send your booking confirmation here)</label><input type="email" id="gEmail" inputmode="email" maxlength="120" autocomplete="email" required>
       <ul class="rules">
         ${s.free?`<li>This class is <b>FREE</b>. No payment needed. Your slot is <b>confirmed right away</b>.</li>`:`<li>Strictly by appointment. Your slot is <b>confirmed once you pay</b>.</li>`}
         <li>First-timers sign a short waiver at the studio before class.</li>
@@ -505,6 +505,7 @@ function gBookSheet(s){
     if(name.length<2) return err("Please type your full name.");
     if(mob.replace(/\D/g,"").length<10) return err("Please type your full mobile number.");
     if(fb.length<2) return err("Please type your Facebook or Messenger name.");
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return err("Please type a valid email. We send your booking confirmation there.");
     if(!$("gAgree").checked) return err(GERR.not_agreed);
     $("gGo").disabled=true; $("gGo").innerHTML=`<span class="spin"></span>`;
     const r = await rpc("fw_guest_book", {p_session:s.id, p_name:name, p_mobile:mob, p_email:em, p_fb:fb, p_agreed:true});
