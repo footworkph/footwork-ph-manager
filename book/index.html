@@ -298,6 +298,7 @@ function bookSheet(s){
       <li>Booking closes <b>${data.cutoffHours} hours</b> before class.</li>
       <li>Bring your membership card. Show it at the counter for your points and discount.</li>
     </ul>
+    <div class="rules" style="border-color:var(--pink)">📧 <b>All booking confirmations are sent to your email.</b><br>${data.member.emailMasked?`We'll send it to <b>${esc(data.member.emailMasked)}</b>. Please check your email address. Wrong email? Message our Facebook page before you pay.`:`We don't have your email yet. Message our Facebook page so we can add it.`}</div>
     ${s.free?"":POLICY+`<label class="check" style="margin-top:0;color:var(--ink)"><input type="checkbox" id="bkAgree"> I understand: no cancellation, no refund, not transferable. No show = forfeited.</label>`}
     <div class="err" id="bkErr" hidden></div>
     <button class="btn pink block" id="bkGo">Confirm booking</button>
@@ -484,7 +485,7 @@ function gBookSheet(s){
       <label for="gName">Full name</label><input type="text" id="gName" maxlength="80" autocomplete="name" required>
       <label for="gMob">Mobile number</label><input type="tel" id="gMob" inputmode="tel" placeholder="09xx xxx xxxx" autocomplete="tel" required>
       <label for="gFb">Facebook / Messenger name</label><input type="text" id="gFb" maxlength="80" required>
-      <label for="gEmail">Email (we send your booking confirmation here)</label><input type="email" id="gEmail" inputmode="email" maxlength="120" autocomplete="email" required>
+      <label for="gEmail">Email</label><p class="small" style="margin:2px 0 6px;color:var(--warn);font-weight:700">📧 All booking confirmations are sent to your email. Please check your email address.</p><input type="email" id="gEmail" inputmode="email" maxlength="120" autocomplete="email" required>
       <ul class="rules">
         ${s.free?`<li>This class is <b>FREE</b>. No payment needed. Your slot is <b>confirmed right away</b>.</li>`:`<li>Strictly by appointment. Your slot is <b>confirmed once you pay</b>.</li>`}
         <li>First-timers sign a short waiver at the studio before class.</li>
@@ -535,7 +536,7 @@ function gDone(b, fresh){
       <li>Screenshot this booking and your payment receipt.</li>
       <li>Send both to our Facebook page <b>Footwork PH</b>.</li>
     </ol>
-    <p class="small muted">Your slot is confirmed once we verify your payment.${b.email?" We'll email your confirmation.":""}</p>${PAY_REMIND}${BEFORE(false)}
+    <p class="small muted">Your slot is confirmed once we verify your payment.${b.email?" We'll email your confirmation to <b>"+esc(b.email)+"</b>. Please check your inbox and spam folder.":""}</p>${PAY_REMIND}${BEFORE(false)}
     ${upsell()}
     <button class="btn block" style="margin-top:16px" data-close>Done</button>`}`);
   if($("gCopy")) $("gCopy").onclick = ()=>{ try{ navigator.clipboard.writeText(G.payNumber.replace(/\D/g,"")).then(()=>toast("Number copied")); }catch(e){ toast(G.payNumber); } };
