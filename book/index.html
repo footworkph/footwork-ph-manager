@@ -172,6 +172,14 @@ const POLICY = `<div class="rules" style="border-color:var(--bad)">
     <li>Your slot is <b>non-transferable</b>. Only the person named can attend.</li>
     <li><b>No show = forfeited.</b> Your slot and payment will not be returned or moved.</li>
   </ul></div>`;
+const BEFORE = (member) => `<div class="rules" style="border-color:var(--lime)">
+  <div style="font-weight:700;margin-bottom:6px">📋 Before class</div>
+  <ul style="margin:0;padding-left:18px">
+    <li>Come <b>15 minutes early</b> and go to the <b>counter first</b>.</li>
+    ${member?`<li>Show your membership card for your points and discount.</li>`:`<li>First-timers <b>sign a short waiver</b> at the counter before class.</li>`}
+  </ul>
+  <div style="font-weight:700;margin:10px 0 6px">🎒 Please bring</div>
+  <ul style="margin:0;padding-left:18px"><li>Water bottle</li><li>Small towel</li><li>Extra shirt</li><li>Comfortable rubber shoes</li></ul></div>`;
 const PAY_REMIND = `<p class="small" style="margin:8px 0;color:var(--warn);font-weight:700">Reminder: Paid slots are non-refundable and non-transferable. No show = forfeited.</p>`;
 const ERR = {
   paid_no_cancel: "Paid bookings can't be cancelled. Payment is non-refundable and the slot is non-transferable.",
@@ -314,7 +322,7 @@ function freeSheet(s, ref){
       <li><span class="pill lime">Confirmed ✓</span> This class is free. No payment needed.</li>
       <li>Bring your membership card. Show it at the counter for your points.</li>
       <li>Can't make it? Cancel here so another member can take your slot.</li>
-    </ul>
+    </ul>${BEFORE(true)}
     <button class="btn block" style="margin-top:6px" data-close>Done</button>`);
 }
 function paySheet(s, ref, fresh){
@@ -322,7 +330,7 @@ function paySheet(s, ref, fresh){
   openSheet(`<h3>${fresh?"Slot reserved! 🎉":"Pay to confirm"}</h3>
     <p class="muted">${esc(s.class)} · ${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}</p>
     <p class="small muted" style="margin-top:12px">Booking ref</p><div class="ref">${esc(ref||s.booking_ref||"")}</div>
-    <div class="rules">${esc(data.payNote)}</div>${PAY_REMIND}
+    <div class="rules">${esc(data.payNote)}</div>${PAY_REMIND}${BEFORE(true)}
     <label for="pRef">GCash / Maya reference no. (optional)</label>
     <input type="text" id="pRef" maxlength="60" placeholder="e.g. 1234 567 890123" inputmode="numeric">
     <label>Screenshot of your payment</label>
@@ -476,7 +484,7 @@ function gBookSheet(s){
       <label for="gName">Full name</label><input type="text" id="gName" maxlength="80" autocomplete="name" required>
       <label for="gMob">Mobile number</label><input type="tel" id="gMob" inputmode="tel" placeholder="09xx xxx xxxx" autocomplete="tel" required>
       <label for="gFb">Facebook / Messenger name</label><input type="text" id="gFb" maxlength="80" required>
-      <label for="gEmail">Email (optional)</label><input type="text" id="gEmail" inputmode="email" maxlength="120" autocomplete="email">
+      <label for="gEmail">Email (to get your confirmation)</label><input type="text" id="gEmail" inputmode="email" maxlength="120" autocomplete="email">
       <ul class="rules">
         ${s.free?`<li>This class is <b>FREE</b>. No payment needed. Your slot is <b>confirmed right away</b>.</li>`:`<li>Strictly by appointment. Your slot is <b>confirmed once you pay</b>.</li>`}
         <li>First-timers sign a short waiver at the studio before class.</li>
@@ -502,7 +510,7 @@ function gBookSheet(s){
     const r = await rpc("fw_guest_book", {p_session:s.id, p_name:name, p_mobile:mob, p_email:em, p_fb:fb, p_agreed:true});
     if(!r.ok){ err(GERR[r.error]||ERR.network); $("gGo").disabled=false; $("gGo").textContent="Reserve my slot"; if(["full","closed","already","no_session","members_only"].includes(r.error)) loadGuest(true); return; }
     const when = s.date+"T"+s.time+":00+08:00";
-    const b = {ref:r.ref, cls:s.class, when, coach:s.coach, name, free:!!(r.free||s.free)};
+    const b = {ref:r.ref, cls:s.class, when, coach:s.coach, name, email:em, free:!!(r.free||s.free)};
     gSet([...gGet().filter(x=>x.ref!==b.ref), b]);
     loadGuest(true); gDone(b, true);
   };
@@ -511,7 +519,7 @@ function gDone(b, fresh){
   openSheet(`<p class="small" style="margin:0 0 4px;color:var(--lime);font-weight:700">📸 SCREENSHOT THIS PAGE</p>
     <h3>${fresh?"Slot reserved!":"Your booking"}</h3>
     <div class="kv"><b>Ref</b><span class="ref" style="font-size:28px">${esc(b.ref)}</span><b>Name</b><span>${esc(b.name)}</span><b>Class</b><span>${esc(b.cls)}</span><b>When</b><span>${esc(fmtWhen(b.when))}</span>${b.coach?`<b>Coach</b><span>${esc(b.coach)}</span>`:""}<b>Status</b><span>${b.free?`<span class="pill lime">Confirmed ✓ · FREE</span>`:`<span class="pill warn">Waiting for payment</span>`}</span></div>
-    ${b.free?`<ul class="rules"><li>This class is free. <b>No payment needed.</b></li><li>Show this screenshot at the studio counter.</li><li>First-timers sign a short waiver at the studio before class.</li></ul>
+    ${b.free?`<ul class="rules"><li>This class is free. <b>No payment needed.</b></li><li>Show this screenshot at the studio counter.</li></ul>${BEFORE(false)}
     ${upsell()}
     <button class="btn block" style="margin-top:16px" data-close>Done</button>`:`
     <div class="rules" style="border-color:var(--pink)">
@@ -526,7 +534,7 @@ function gDone(b, fresh){
       <li>Screenshot this booking and your payment receipt.</li>
       <li>Send both to our Facebook page <b>Footwork PH</b>.</li>
     </ol>
-    <p class="small muted">Your slot is confirmed once we verify your payment.</p>${PAY_REMIND}
+    <p class="small muted">Your slot is confirmed once we verify your payment.${b.email?" We'll email your confirmation.":""}</p>${PAY_REMIND}${BEFORE(false)}
     ${upsell()}
     <button class="btn block" style="margin-top:16px" data-close>Done</button>`}`);
   if($("gCopy")) $("gCopy").onclick = ()=>{ try{ navigator.clipboard.writeText(G.payNumber.replace(/\D/g,"")).then(()=>toast("Number copied")); }catch(e){ toast(G.payNumber); } };

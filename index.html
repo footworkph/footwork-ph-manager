@@ -760,7 +760,7 @@ function bookingsCard(){
      <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${b.proof_path?"":" · No screenshot yet"}</div></div>
      <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Confirmed":"Waiting for payment"}</span></div>
      <div class="row" style="margin-top:8px">${b.proof_path?`<button type="button" class="btn sm ghost" data-act="bkProof" data-id="${b.id}">View proof</button>`:""}
-     ${b.status==="pending"?`<button type="button" class="btn sm" data-act="bkConfirm" data-id="${b.id}">Paid · Confirm</button>`:`<button type="button" class="btn sm ghost" data-act="bkUnconfirm" data-id="${b.id}">Undo confirm</button>`}
+     ${b.status==="pending"?`<button type="button" class="btn sm" data-act="bkConfirm" data-id="${b.id}">Paid · Confirm</button>`:`<button type="button" class="btn sm ghost" data-act="bkMsg" data-id="${b.id}">Copy message</button><button type="button" class="btn sm ghost" data-act="bkResend" data-id="${b.id}">${bkEmailOf(b)?"Resend email":"No email"}</button><button type="button" class="btn sm ghost" data-act="bkUnconfirm" data-id="${b.id}">Undo confirm</button>`}
      <button type="button" class="btn sm ghost" data-act="bkCancel" data-id="${b.id}">Cancel booking</button></div></li>`;
   return `<div class="card"><div class="row between"><h3 style="margin:0">Online bookings</h3><div class="row"><button type="button" class="btn sm ghost" data-act="bkCopy">Copy booking link</button><button type="button" class="btn sm ghost" data-act="bkRefresh" aria-label="Refresh bookings">↻</button></div></div>
    <p class="small muted" style="margin:6px 0 10px">Members book anytime with their Member ID. Guests (non-members) can book from 24 hours before class. Confirm each booking after you check the payment. Confirming a guest saves them as a non-member. Online booking closes 12 hours before class.</p>
@@ -781,7 +781,41 @@ async function bkSet(id, patch, msg){
   if(bk && !bk.is_member && patch.status==="confirmed" && !bk.member_id) patch.member_id = guestToNonMember(bk);
   const r = await sb.from("fw_bookings").update(Object.assign({updated_at:new Date().toISOString()}, patch)).eq("id", id);
   if(r.error){ toast("Couldn't update. Check your internet."); return; }
+  if(patch.status==="confirmed" && bk){
+    const res = await bkSendConf(Object.assign({}, bk, patch));
+    msg = res==="sent" ? "Confirmed · email sent to "+bkEmailOf(bk) : res==="noemail" ? "Confirmed · no email on file. Tap “Copy message” to send on Messenger." : res==="nomail" ? "Confirmed · email not set up. Tap “Copy message”." : "Confirmed · email failed. Tap “Copy message”.";
+  }
   toast(msg); await loadBookings(); render();
+}
+/* ---------- booking confirmation (email + copyable message) ---------- */
+const BK_BRING = ["Water bottle","Small towel","Extra shirt","Comfortable rubber shoes"];
+function bkEmailOf(b){ const m=b.member_id&&member(b.member_id); return (b.email||(m&&m.email)||"").trim(); }
+function bkConfText(b){
+  const coach = (()=>{ const s=S.sessions.find(x=>x.id===b.class_id); const i=s&&instr(s.instructorId); return i?i.name:""; })();
+  return `Hi ${b.name}! ✅ Your slot is CONFIRMED.\n\nClass: ${b.class_name||"Class"}\nWhen: ${bkWhen(b)}${coach?`\nCoach: ${coach}`:""}\nBooking ref: ${b.ref}\n\nBEFORE CLASS:\n• Come 15 minutes early and go to the counter first.\n${b.is_member?"• Show your membership card for your points and discount.":"• First-timers sign a short waiver at the counter before class."}\n\nPLEASE BRING:\n${BK_BRING.map(x=>"• "+x).join("\n")}\n\nReminder: Paid slots are non-refundable and non-transferable. No show = forfeited.\n\nSee you at the studio!\n${FWC_FOOT}`;
+}
+function bkConfHtml(b){
+  const F="font-family:Arial,Helvetica,sans-serif;", s=S.sessions.find(x=>x.id===b.class_id), i=s&&instr(s.instructorId);
+  const row=(k,v)=>`<tr><td style="${F}padding:6px 0;width:110px;color:#666;font-size:14px">${k}</td><td style="${F}padding:6px 0;color:#111;font-size:15px;font-weight:700">${esc(v)}</td></tr>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;padding:0;background:#f3f0f5">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f0f5"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border:3px solid #FA1294;border-radius:14px;overflow:hidden">
+<tr><td style="${F}background:#111;padding:20px 16px;text-align:center;font-size:28px;font-weight:900;font-style:italic"><span style="color:#fff">FOOT</span><span style="color:#B4FA2A">WORK</span> <span style="color:#FA1294">PH</span></td></tr>
+<tr><td style="${F}padding:20px 18px 6px;font-size:20px;font-weight:800;color:#111">✅ Your slot is confirmed!</td></tr>
+<tr><td style="${F}padding:0 18px 10px;font-size:15px;color:#333">Hi ${esc(b.name)}, we received your payment. See you in class!</td></tr>
+<tr><td style="padding:0 18px 12px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${row("Class",b.class_name||"Class")}${row("When",bkWhen(b))}${i?row("Coach",i.name):""}${row("Booking ref",b.ref)}</table></td></tr>
+<tr><td style="padding:0 18px 14px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f3fa;border-radius:10px"><tr><td style="${F}padding:14px 16px;font-size:14px;line-height:1.6;color:#222">
+<b style="color:#E8157F">BEFORE CLASS</b><br>• Come 15 minutes early and go to the counter first.<br>${b.is_member?"• Show your membership card for your points and discount.":"• First-timers sign a short waiver at the counter before class."}<br><br>
+<b style="color:#E8157F">PLEASE BRING</b><br>${BK_BRING.map(x=>"• "+esc(x)).join("<br>")}</td></tr></table></td></tr>
+<tr><td style="${F}background:#FA1294;padding:12px 16px;font-size:13px;line-height:1.45;font-weight:700;color:#fff;text-align:center">Paid slots are non-refundable and non-transferable. No show = forfeited.</td></tr>
+<tr><td style="${F}padding:14px 16px;font-size:12px;line-height:1.5;color:#555;text-align:center">${esc(FWC_FOOT)}</td></tr>
+</table></td></tr></table></body></html>`;
+}
+async function bkSendConf(b){
+  const to = bkEmailOf(b);
+  if(!to || !EMAIL_RX.test(to)) return "noemail";
+  if(!mailReady()) return "nomail";
+  try{ const r = await mailPost({to:[to], subject:`Confirmed: ${b.class_name||"Class"} · ${bkWhen(b)} · Footwork PH`, html:bkConfHtml(b), text:bkConfText(b)}); return r&&r.ok?"sent":"fail"; }catch(e){ return "fail"; }
 }
 async function bkProof(id){
   const b = BK.find(x=>x.id===id); if(!b||!b.proof_path) return;
@@ -2949,6 +2983,8 @@ function handleAct(b){
   const ses = () => S.sessions.find(x=>x.id===id);
   const reRender = () => { if(!dlg.open) render(); };
   if(a==="newSession") sessionDlg();
+  else if(a==="bkMsg"){ const b=BK.find(x=>x.id===id); if(b) copyText(bkConfText(b),"Message copied. Paste it in Messenger."); }
+  else if(a==="bkResend"){ const b=BK.find(x=>x.id===id); if(b) bkSendConf(b).then(r=>toast(r==="sent"?"Email sent":r==="noemail"?"No email on file. Use Copy message.":"Email failed. Use Copy message.")); }
   else if(a==="bkConfirm") bkSet(id,{status:"confirmed"},"Booking confirmed");
   else if(a==="bkUnconfirm") bkSet(id,{status:"pending"},"Back to waiting for payment");
   else if(a==="bkCancel"){ if(confirm("Cancel this booking? The slot opens up for other members.")) bkSet(id,{status:"cancelled",cancelled_by:"studio"},"Booking cancelled"); }
