@@ -56,6 +56,8 @@ input:focus{outline:2px solid var(--lime);outline-offset:1px}
 .day{font-family:"Barlow Condensed","Arial Narrow",Arial,sans-serif;font-weight:800;font-style:italic;font-size:21px;margin:18px 0 8px;color:#fff}
 .day span{color:var(--muted);font-family:"Barlow Semi Condensed",Arial,sans-serif;font-style:normal;font-weight:600;font-size:14px;margin-left:6px}
 .cls{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:10px;display:grid;grid-template-columns:72px 1fr;gap:12px;align-items:center}
+.cls.full{opacity:.6}
+.cls.full .bar i{background:var(--bad)}
 .cls.mine{border-color:var(--pink);box-shadow:0 0 16px rgba(250,18,148,.2)}
 .tm{font-family:"Barlow Condensed","Arial Narrow",Arial,sans-serif;font-weight:900;font-style:italic;font-size:26px;line-height:.95;color:var(--lime)}
 .tm small{display:block;font-size:14px;color:var(--muted);font-style:normal;font-family:"Barlow Semi Condensed",Arial,sans-serif;font-weight:700}
@@ -260,17 +262,17 @@ function card(s){
   if(s.checked_in) btn = `<span class="pill lime">Checked in ✓</span>`;
   else if(s.mine==="confirmed") btn = `<span class="pill lime">Booked ✓</span>`;
   else if(s.mine==="pending") btn = `<button class="btn sm" data-proof="${esc(s.id)}">Pay to confirm</button>`;
-  else if(left<=0) btn = `<span class="pill bad">Full</span>`;
+  else if(left<=0) btn = `<span class="pill bad">FULL · Closed</span>`;
   else if(!s.open) btn = `<span class="pill">Booking closed</span>`;
   else if(!data.open) btn = `<span class="pill">Paused</span>`;
   else btn = `<button class="btn pink sm" data-book="${esc(s.id)}">Book</button>`;
-  return `<div class="cls${s.mine?" mine":""}">
+  return `<div class="cls${s.mine?" mine":""}${s.capacity-s.taken<=0&&!s.mine&&!s.checked_in?" full":""}">
     <div class="tm">${ft.t}<small>${ft.ap}</small></div>
     <div>
       <div class="row"><div class="cn">${esc(s.class)}${s.free?` <span class="pill lime">FREE</span>`:""}</div>${btn}</div>
       ${s.coach?`<div class="co">with ${esc(s.coach)}</div>`:""}
       <div class="bar"><i style="width:${pct}%"></i></div>
-      <div class="small ${left<=2&&left>0?"":"muted"}" style="${left<=2&&left>0?"color:var(--warn);font-weight:700":""}">${left>0?`${left} of ${s.capacity} slots left`:"No slots left"}</div>
+      <div class="small ${left<=2&&left>0?"":"muted"}" style="${left<=2&&left>0?"color:var(--warn);font-weight:700":""}">${left>0?`${left} of ${s.capacity} slots left`:`<b style="color:var(--bad)">Full slot (${s.capacity}/${s.capacity}) · Booking closed</b>`}</div>
     </div></div>`;
 }
 
@@ -452,18 +454,18 @@ function gCard(s){
   const left = Math.max(0, s.capacity - s.taken), pct = Math.min(100, Math.round(s.taken/s.capacity*100)), ft = fmtTime(s.time);
   const opens = new Date(s.guest_opens_at).toLocaleString("en-PH",{weekday:"short",hour:"numeric",minute:"2-digit"});
   let btn;
-  if(left<=0) btn = `<span class="pill bad">Full</span>`;
+  if(left<=0) btn = `<span class="pill bad">FULL · Closed</span>`;
   else if(!G.open) btn = `<span class="pill">Paused</span>`;
   else if(s.guest_open) btn = `<button class="btn pink sm" data-gbook="${esc(s.id)}">Book</button>`;
   else if(s.guest_soon) btn = `<span class="pill pink">Members first</span>`;
   else btn = `<span class="pill">Booking closed</span>`;
-  return `<div class="cls">
+  return `<div class="cls${left<=0?" full":""}">
     <div class="tm">${ft.t}<small>${ft.ap}</small></div>
     <div>
       <div class="row"><div class="cn">${esc(s.class)}${s.free?` <span class="pill lime">FREE</span>`:""}</div>${btn}</div>
       ${s.coach?`<div class="co">with ${esc(s.coach)}</div>`:""}
       <div class="bar"><i style="width:${pct}%"></i></div>
-      <div class="small muted">${left>0?`${left} of ${s.capacity} slots left`:"No slots left"}${s.guest_soon&&left>0?` · Guest booking opens ${esc(opens)}`:""}</div>
+      <div class="small muted">${left>0?`${left} of ${s.capacity} slots left`:`<b style="color:var(--bad)">Full slot (${s.capacity}/${s.capacity}) · Booking closed</b>`}${s.guest_soon&&left>0?` · Guest booking opens ${esc(opens)}`:""}</div>
     </div></div>`;
 }
 function gBookSheet(s){
