@@ -109,7 +109,7 @@ input:focus{outline:2px solid var(--lime);outline-offset:1px}
     </form>
     <div class="card" style="margin-top:16px">
       <div style="font-weight:700;font-size:20px">Not a member yet?</div>
-      <p class="small muted">Book as a guest. Members get first pick, so guest booking opens 24 hours before each class.</p>
+      <p class="small muted">Book as a guest. Pick your class and reserve your slot now. Slots are first to pay, first to reserve.</p>
       <button class="btn block" id="guestBtn" type="button" style="margin-top:12px">Book as a guest</button>
     </div>
   </section>
@@ -118,7 +118,7 @@ input:focus{outline:2px solid var(--lime);outline-offset:1px}
   <section id="guest" hidden>
     <button class="btn ghost sm" id="gBack" type="button">‹ Back</button>
     <h1 style="margin-top:14px">Book as a <span>guest</span></h1>
-    <p class="muted">Strictly by appointment. Members get first pick, so guest booking opens <b style="color:var(--ink)" id="gOpenH">24 hours</b> before each class and closes <b style="color:var(--ink)" id="gCutH">12 hours</b> before class.</p>
+    <p class="muted">Strictly by appointment. <span id="gOpenTxt">Guest booking is open now.</span> Booking closes <b style="color:var(--ink)" id="gCutH">12 hours</b> before class.</p>
     <div id="gMine"></div>
     <div class="chips" id="gChips" role="group" aria-label="Filter by class" style="margin-top:12px"></div>
     <div id="gList"></div>
@@ -392,7 +392,7 @@ let G = null, gType = "";
 const gGet = () => { try{ return JSON.parse(localStorage.getItem(GLS)||"[]"); }catch(e){ return []; } };
 const gSet = v => { try{ localStorage.setItem(GLS, JSON.stringify(v)); }catch(e){} };
 const GERR = Object.assign({}, ERR, {
-  members_only: "Members get first pick for this class. Guest booking opens 24 hours before class.",
+  members_only: "Members get first pick for this class. Guest booking is not open yet for this class.",
   not_agreed: "Please tick the box to agree to the studio rules.",
   bad_details: "Please check your name, mobile number, email and Facebook name.",
   too_many: "You already have 3 upcoming guest bookings. Please message our Facebook page.",
@@ -420,7 +420,7 @@ async function loadGuest(silent){
   G = r; renderGuest(); show("guest");
 }
 function renderGuest(){
-  $("gOpenH").textContent = G.guestOpenHours+" hours"; $("gCutH").textContent = G.cutoffHours+" hours";
+  $("gOpenTxt").textContent = G.guestOpenHours>=168 ? "Guest booking is open now." : "Members get first pick, so guest booking opens "+G.guestOpenHours+" hours before each class."; $("gCutH").textContent = G.cutoffHours+" hours";
   const mine = gGet().filter(b=>new Date(b.when) > new Date(Date.now()-3*3600e3));
   gSet(mine);
   $("gMine").innerHTML = mine.length ? `<h2>Your guest bookings</h2>`+mine.map(b=>`<div class="card" style="margin-bottom:10px"><div class="row"><div><div class="cn">${esc(b.cls)}</div><div class="co">${esc(fmtWhen(b.when))} · Ref ${esc(b.ref)}</div></div><button class="btn sm" data-gshow="${esc(b.ref)}">Show booking</button></div></div>`).join("") : "";
