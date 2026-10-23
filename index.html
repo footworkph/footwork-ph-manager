@@ -1678,13 +1678,18 @@ function buckets(r){
     const [y,m]=ym.split("-").map(Number); const d=new Date(y,m,1); ym=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); }
   return {title:"Monthly breakdown",list:out};
 }
-function splitBar(inst, biz, pct){
-  const total = inst+biz;
-  const w = total>0 ? Math.max(0,Math.min(100, inst/total*100)) : +pct;
+function splitBar(inst, biz, pct, c){
+  const gross = inst+biz, fixed = c && c.mode && c.mode!=="pct";
+  if(c && gross<=0 && inst<=0) return `<div class="split"><div class="bar" role="img" aria-label="No sales yet"><div class="biz" style="opacity:.35">No sales yet</div></div>
+    <div class="legend"><span>Instructor ₱0${fixed?` (${esc(c.note)})`:""}</span><span>Studio ₱0</span></div></div>`;
+  const w = gross>0 ? Math.max(0,Math.min(100, inst/gross*100)) : (fixed?100:+pct);
+  const iL = fixed ? (w>=22?"Fixed "+peso(inst):"") : (w>=18?Math.round(w)+"%":"");
+  const bL = fixed ? (100-w>=22?peso(biz):"") : (100-w>=18?Math.round(100-w)+"%":"");
   return `<div class="split"><div class="bar" role="img" aria-label="Instructor ${peso(inst)}, studio ${peso(biz)}">
-    <div class="inst" style="width:${w}%">${w>=18?Math.round(w)+"%":""}</div>
-    <div class="biz">${100-w>=18?Math.round(100-w)+"%":""}</div></div>
-    <div class="legend"><span>Instructor ${peso(inst)}</span><span>Studio ${peso(biz)}</span></div></div>`;
+    <div class="inst" style="width:${w}%">${iL}</div>
+    <div class="biz">${bL}</div></div>
+    <div class="legend"><span>Instructor ${peso(inst)}${fixed?` (${esc(c.note)})`:""}</span><span${biz<0?' style="color:var(--bad)"':""}>Studio ${peso(biz)}</span></div>
+    ${c?`<p class="small muted" style="margin:4px 0 0">Sales ${peso(gross)} − Instructor ${peso(inst)}${fixed?" fixed":` (${Math.round(+pct)}%)`} = <b${biz<0?' style="color:var(--bad)"':""}>Studio ${peso(biz)}</b>${biz<0?" · loss: sales are below the instructor's fixed rate":""}</p>`:""}</div>`;
 }
 const promoStrip = () => { const on=promoOn(); const p=S.settings.promo;
   return `<div class="promo ${on?"":"off"}"><div><b>${on?"Promo rates are ON":"Regular rates"}</b><div class="small muted">${on?(p.ends?`Until ${fmtDate(p.ends)}`:"No end date set"):(p.active&&p.ends?`Promo ended ${fmtDate(p.ends)}`:"Turn on to use promo prices")}</div></div>
@@ -1768,7 +1773,7 @@ function vSessionList(viewSeg){
       <div class="row between"><div><h3>${fmtDate(s.date)} · ${fmtTime(s.time)}</h3><p class="small muted" style="margin:2px 0 0"><span class="pill pink">${esc(typeName(s))}</span> · ${ins?`<button class="linkbtn" data-act="openInstr" data-id="${ins.id}">${esc(ins.name)}</button>`:"No instructor"}</p></div>
       <span class="pill ${slotsTaken(s)>=+S.settings.capacity?"bad":""}">${slotsTaken(s)}/${S.settings.capacity} pax${slotsTaken(s)>=+S.settings.capacity?" · Full":""}${pendTag(s)}</span></div>
       <p class="small" style="margin:10px 0 2px">Sales <b class="money">${peso(c.gross)}</b> · ${n-nm} members, ${nm} non-members${c.usedMin?` · <span class="muted">minimum pay applied</span>`:""}${c.note?` · <span class="muted">${c.note}</span>`:""}${c.absent?` · <span class="pill bad">Instructor absent</span>`:""}</p>
-      ${splitBar(c.inst,c.biz,c.pct)}
+      ${splitBar(c.inst,c.biz,c.pct,c)}
       ${(()=>{ const e=expectedCalc(s); return e.pending?`<p class="small" style="margin:8px 0 0"><span class="muted">Expected with ${e.pending} paid booking${e.pending===1?"":"s"}:</span> Sales <b class="money">${peso(e.gross)}</b> · Instructor ${peso(e.inst)} · Studio ${peso(e.biz)}</p>`:""; })()}
       ${c.mode==="pct"?`<div class="row" style="margin-top:8px"><label class="small muted" for="pct_${s.id}">Instructor %</label><input class="inl" type="number" min="0" max="100" id="pct_${s.id}" data-pct="${s.id}" value="${c.pct}"></div>`:""}
       <div class="row" style="margin-top:10px">${statusToggles(s)}<button class="btn sm ghost" data-act="editSession" data-id="${s.id}">Edit & attendance</button><button class="btn sm ghost" data-act="scanFor" data-id="${s.id}">Scan cards</button></div></div>`;}).join(""):`<div class="card empty">No classes in this period. Tap “Add class” to schedule one.</div>`}`;
@@ -2496,7 +2501,7 @@ function sessionDlg(s, preset){
   const pi = preset && preset.instructorId ? instr(preset.instructorId) : null;
   s = s ? structuredClone(s) : {id:uid(), date:(preset&&preset.date)||todayISO(), time:"18:00", typeId:(pi&&pi.types&&pi.types[0])||S.settings.classTypes[0]?.id||"", title:"", instructorId:(pi&&pi.id)||S.settings.instructors[0]?.id||"", attendees:[], paidOut:false, instStatus:"present", pctOverride:""};
   const newNon = [];
-  const drawSum = ()=>{ const c=sessionCalc(s), e=expectedCalc(s); document.getElementById("s_sum").innerHTML = (e.pending?`<p class="small" style="margin:10px 0 0"><b>Expected with paid bookings</b> · ${slotsTaken(s)}/${S.settings.capacity} pax · Sales <b>${peso(e.gross)}</b></p>${splitBar(e.inst,e.biz,e.pct)}<p class="small muted" style="margin:10px 0 0">Actual (checked in only)</p>`:"") + `<p class="small" style="margin:10px 0 0">${slotsTaken(s)}/${S.settings.capacity} pax (${s.attendees.length} checked in) · Sales <b>${peso(c.gross)}</b></p>${splitBar(c.inst,c.biz,c.pct)}`; };
+  const drawSum = ()=>{ const c=sessionCalc(s), e=expectedCalc(s); document.getElementById("s_sum").innerHTML = (e.pending?`<p class="small" style="margin:10px 0 0"><b>Expected with paid bookings</b> · ${slotsTaken(s)}/${S.settings.capacity} pax · Sales <b>${peso(e.gross)}</b></p>${splitBar(e.inst,e.biz,e.pct,e)}<p class="small muted" style="margin:10px 0 0">Actual (checked in only)</p>`:"") + `<p class="small" style="margin:10px 0 0">${slotsTaken(s)}/${S.settings.capacity} pax (${s.attendees.length} checked in) · Sales <b>${peso(c.gross)}</b></p>${splitBar(c.inst,c.biz,c.pct,c)}`; };
   const drawAtt = ()=>{
     const box=document.getElementById("s_att");
     box.innerHTML = s.attendees.length ? s.attendees.map((a,i)=>`<div class="att"><span class="nm">${esc(member(a.memberId)?.name||newNon.find(n=>n.id===a.memberId)?.name||a.name)} <span class="pill ${a.kind==="nonmember"?"":"pink"}">${a.kind==="nonmember"?"non-member":"member"}</span>${a.pkg?` <span class="pill ok">package</span>`:""}</span><input type="number" min="0" aria-label="Amount paid" data-i="${i}" value="${a.amount}"><button type="button" class="x" data-rm="${i}" aria-label="Remove">✕</button></div>`).join("") : `<p class="small muted">No one checked in yet.</p>`;
