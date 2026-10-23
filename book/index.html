@@ -162,7 +162,17 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let cred = null, data = null, typeFilter = "", tab = "sched";
 
+const POLICY = `<div class="rules" style="border-color:var(--bad)">
+  <div style="font-weight:700;margin-bottom:6px">⚠️ No cancellation · No refund</div>
+  <ul style="margin:0;padding-left:18px">
+    <li>Once paid, your booking <b>can't be cancelled</b>.</li>
+    <li>Payment is <b>non-refundable</b>.</li>
+    <li>Your slot is <b>non-transferable</b>. Only the person named can attend.</li>
+    <li><b>No show = forfeited.</b> Your slot and payment will not be returned or moved.</li>
+  </ul></div>`;
+const PAY_REMIND = `<p class="small" style="margin:8px 0;color:var(--warn);font-weight:700">Reminder: Paid slots are non-refundable and non-transferable. No show = forfeited.</p>`;
 const ERR = {
+  paid_no_cancel: "Paid bookings can't be cancelled. Payment is non-refundable and the slot is non-transferable.",
   not_found: "We couldn't find that Member ID with that mobile number. Use the mobile number you registered with.",
   expired: "Your membership has expired. Message our Facebook page to renew, then you can book again.",
   locked: "Too many tries. Please wait 15 minutes, then try again.",
@@ -239,7 +249,7 @@ function render(){
       <p class="small muted" style="margin-top:8px">Booking ref: <b style="color:var(--ink)">${esc(s.booking_ref||"")}</b>${s.mine==="pending"?(s.proof_sent?" · Proof sent, waiting for confirmation":" · Please pay to confirm your slot"):""}</p>
       <div class="row" style="justify-content:flex-start;margin-top:10px">
         ${s.mine==="pending"?`<button class="btn sm" data-proof="${esc(s.id)}">${s.proof_sent?"Send another proof":"Upload proof of payment"}</button>`:""}
-        ${s.open?`<button class="btn ghost sm" data-cancel="${esc(s.id)}">Cancel booking</button>`:`<span class="small muted">Can't cancel online (less than ${data.cutoffHours} hours to class)</span>`}
+        ${!s.free && (s.mine==="confirmed" || s.proof_sent) ? `<span class="small muted">Paid · non-refundable, no cancellation</span>` : s.open?`<button class="btn ghost sm" data-cancel="${esc(s.id)}">Cancel booking</button>`:`<span class="small muted">Can't cancel online (less than ${data.cutoffHours} hours to class)</span>`}
       </div></div>`;
   }).join("") : `<div class="empty card"><b>No bookings yet</b>Pick a class from the schedule to book your slot.</div>`;
 }
@@ -275,13 +285,15 @@ function bookSheet(s){
     <div class="kv"><b>Class</b><span>${esc(s.class)}</span><b>When</b><span>${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}</span>${s.coach?`<b>Coach</b><span>${esc(s.coach)}</span>`:""}<b>Slots</b><span>${Math.max(0,s.capacity-s.taken)} of ${s.capacity} left</span></div>
     <ul class="rules">
       ${s.free?`<li>This class is <b>FREE</b>. No payment needed. Your slot is <b>confirmed right away</b>.</li>`:`<li>Your slot is <b>reserved</b> now and <b>confirmed once you pay</b>.</li>`}
-      <li>Booking and cancelling close <b>${data.cutoffHours} hours</b> before class.</li>
+      <li>Booking closes <b>${data.cutoffHours} hours</b> before class.</li>
       <li>Bring your membership card. Show it at the counter for your points and discount.</li>
     </ul>
+    ${s.free?"":POLICY+`<label class="check" style="margin-top:0;color:var(--ink)"><input type="checkbox" id="bkAgree"> I understand: no cancellation, no refund, not transferable. No show = forfeited.</label>`}
     <div class="err" id="bkErr" hidden></div>
     <button class="btn pink block" id="bkGo">Confirm booking</button>
     <button class="btn ghost block" style="margin-top:10px" data-close>Not now</button>`);
   $("bkGo").onclick = async ()=>{
+    if(!s.free && !$("bkAgree").checked){ $("bkErr").textContent="Please tick the box to agree to the no-refund policy."; $("bkErr").hidden=false; return; }
     $("bkGo").disabled = true; $("bkGo").innerHTML = `<span class="spin"></span>`;
     const r = await rpc("fw_member_book", {p_no:cred.no, p_mobile:cred.mob, p_session:s.id});
     if(!r.ok){ $("bkErr").textContent = ERR[r.error]||ERR.network; $("bkErr").hidden=false; $("bkGo").disabled=false; $("bkGo").textContent="Confirm booking"; if(["full","closed","already","no_session"].includes(r.error)) load(true); return; }
@@ -308,7 +320,7 @@ function paySheet(s, ref, fresh){
   openSheet(`<h3>${fresh?"Slot reserved! 🎉":"Pay to confirm"}</h3>
     <p class="muted">${esc(s.class)} · ${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}</p>
     <p class="small muted" style="margin-top:12px">Booking ref</p><div class="ref">${esc(ref||s.booking_ref||"")}</div>
-    <div class="rules">${esc(data.payNote)}</div>
+    <div class="rules">${esc(data.payNote)}</div>${PAY_REMIND}
     <label for="pRef">GCash / Maya reference no. (optional)</label>
     <input type="text" id="pRef" maxlength="60" placeholder="e.g. 1234 567 890123" inputmode="numeric">
     <label>Screenshot of your payment</label>
@@ -354,7 +366,7 @@ function cancelSheet(s){
   const ft = fmtTime(s.time);
   openSheet(`<h3>Cancel this booking?</h3>
     <p class="muted">${esc(s.class)} · ${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}</p>
-    <p class="small muted">Your slot will be given to another member. If you already paid, message our Facebook page about your payment.</p>
+    <p class="small muted">Your slot will be given to another member. Paid bookings can't be cancelled or refunded.</p>
     <div class="err" id="cErr" hidden></div>
     <button class="btn block" style="background:var(--bad);color:#fff;box-shadow:none" id="cGo">Yes, cancel my slot</button>
     <button class="btn ghost block" style="margin-top:10px" data-close>Keep my slot</button>`);
@@ -393,7 +405,7 @@ const gGet = () => { try{ return JSON.parse(localStorage.getItem(GLS)||"[]"); }c
 const gSet = v => { try{ localStorage.setItem(GLS, JSON.stringify(v)); }catch(e){} };
 const GERR = Object.assign({}, ERR, {
   members_only: "Members get first pick for this class. Guest booking is not open yet for this class.",
-  not_agreed: "Please tick the box to agree to the studio rules.",
+  not_agreed: "Please tick the box to agree to the studio rules and the no-refund policy.",
   bad_details: "Please check your name, mobile number, email and Facebook name.",
   too_many: "You already have 3 upcoming guest bookings. Please message our Facebook page.",
   busy: "Lots of bookings right now. Please try again in a few minutes.",
@@ -470,7 +482,8 @@ function gBookSheet(s){
         <li>Aero Step: check your free step board before class starts.</li>
         <li>The studio is not responsible for lost items.</li>
       </ul>
-      <label class="check" style="margin-top:0;color:var(--ink)"><input type="checkbox" id="gAgree"> I agree to the studio rules</label>
+      ${s.free?"":POLICY}
+      <label class="check" style="margin-top:0;color:var(--ink)"><input type="checkbox" id="gAgree"> ${s.free?"I agree to the studio rules":"I agree to the studio rules and the no cancellation, no refund, non-transferable policy. No show = forfeited."}</label>
       <div class="err" id="gErr" hidden></div>
       <button class="btn pink block" id="gGo" type="submit">Reserve my slot</button>
     </form>
@@ -511,7 +524,7 @@ function gDone(b, fresh){
       <li>Screenshot this booking and your payment receipt.</li>
       <li>Send both to our Facebook page <b>Footwork PH</b>.</li>
     </ol>
-    <p class="small muted">Your slot is confirmed once we verify your payment.</p>
+    <p class="small muted">Your slot is confirmed once we verify your payment.</p>${PAY_REMIND}
     ${upsell()}
     <button class="btn block" style="margin-top:16px" data-close>Done</button>`}`);
   if($("gCopy")) $("gCopy").onclick = ()=>{ try{ navigator.clipboard.writeText(G.payNumber.replace(/\D/g,"")).then(()=>toast("Number copied")); }catch(e){ toast(G.payNumber); } };
