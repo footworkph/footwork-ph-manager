@@ -757,10 +757,10 @@ function bookingsCard(){
   const pend = BK.filter(b=>b.status==="pending"), conf = BK.filter(b=>b.status==="confirmed");
   const row = b => `<li><div class="row between"><div style="min-width:0"><b>${esc(b.name)}</b> ${b.is_member?`<span class="pill pink">${esc(b.member_no||"")}</span>`:`<span class="pill">Guest</span><div class="small muted">${esc(b.contact||"")}${b.note?" · "+esc(String(b.note).replace(/^FB:\s*/,"FB: ")):""}</div>`}
      <div class="small">${esc(b.class_name||"Class")} · ${esc(bkWhen(b))}</div>
-     <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${b.proof_path?"":" · No screenshot yet"}</div></div>
+     <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${b.proof_path?"":" · No screenshot yet"}</div>${b.status==="pending"?`<div class="small muted">${bkEmailOf(b)?"Email: "+esc(bkEmailOf(b)):"No email on file"}${bkRemAt(b)?` · <b>Reminder sent ${esc(bkRemAt(b))}</b>`:""}</div>`:""}</div>
      <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Confirmed":"Waiting for payment"}</span></div>
      <div class="row" style="margin-top:8px">${b.proof_path?`<button type="button" class="btn sm ghost" data-act="bkProof" data-id="${b.id}">View proof</button>`:""}
-     ${b.status==="pending"?`<button type="button" class="btn sm" data-act="bkConfirm" data-id="${b.id}">Paid · Confirm</button>`:`<button type="button" class="btn sm ghost" data-act="bkMsg" data-id="${b.id}">Copy message</button><button type="button" class="btn sm ghost" data-act="bkResend" data-id="${b.id}">${bkEmailOf(b)?"Resend email":"No email"}</button><button type="button" class="btn sm ghost" data-act="bkUnconfirm" data-id="${b.id}">Undo confirm</button>`}
+     ${b.status==="pending"?`<button type="button" class="btn sm" data-act="bkConfirm" data-id="${b.id}">Paid · Confirm</button>${bkEmailOf(b)?`<button type="button" class="btn sm ghost" data-act="bkRemind" data-id="${b.id}">Email payment reminder</button>`:""}<button type="button" class="btn sm ghost" data-act="bkRemindCopy" data-id="${b.id}">Copy reminder</button>`:`<button type="button" class="btn sm ghost" data-act="bkMsg" data-id="${b.id}">Copy message</button><button type="button" class="btn sm ghost" data-act="bkResend" data-id="${b.id}">${bkEmailOf(b)?"Resend email":"No email"}</button><button type="button" class="btn sm ghost" data-act="bkUnconfirm" data-id="${b.id}">Undo confirm</button>`}
      <button type="button" class="btn sm ghost" data-act="bkCancel" data-id="${b.id}">Cancel booking</button></div></li>`;
   return `<div class="card"><div class="row between"><h3 style="margin:0">Online bookings</h3><div class="row"><button type="button" class="btn sm ghost" data-act="bkCopy">Copy booking link</button><button type="button" class="btn sm ghost" data-act="bkRefresh" aria-label="Refresh bookings">↻</button></div></div>
    <p class="small muted" style="margin:6px 0 10px">Members book anytime with their Member ID. Guests (non-members) can book from 24 hours before class. Confirm each booking after you check the payment. Confirming a guest saves them as a non-member. Online booking closes 12 hours before class.</p>
@@ -816,6 +816,36 @@ async function bkSendConf(b){
   if(!to || !EMAIL_RX.test(to)) return "noemail";
   if(!mailReady()) return "nomail";
   try{ const r = await mailPost({to:[to], subject:`Confirmed: ${b.class_name||"Class"} · ${bkWhen(b)} · Footwork PH`, html:bkConfHtml(b), text:bkConfText(b)}); return r&&r.ok?"sent":"fail"; }catch(e){ return "fail"; }
+}
+/* ---------- payment reminder for unpaid bookings ---------- */
+function bkAmount(b){ const s=S.sessions.find(x=>x.id===b.class_id); return rate(b.is_member?"member":"nonMember", s&&s.typeId); }
+function bkRemAt(b){ const t=(S.settings.bkReminded||{})[b.id]; if(!t) return ""; const d=new Date(t); return d.toLocaleDateString("en-PH",{month:"short",day:"numeric"})+" "+d.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}); }
+function bkRemText(b){
+  const amt=bkAmount(b);
+  return `Hi ${b.name}! 👋 This is Footwork PH.\n\nYou booked a slot but we have not received your payment yet.\n\nClass: ${b.class_name||"Class"}\nWhen: ${bkWhen(b)}\nBooking ref: ${b.ref}${amt?`\nAmount: ${peso(amt)}`:""}\n\nHOW TO PAY:\n• Pay via ${PAY_LINE}.\n• Send your booking ref and payment screenshot to our Facebook page: Footwork PH.\n\nSlots are first to pay, first to reserve. Please pay soon to keep your spot. Already paid? Just send us your screenshot. Thank you!\n\n${FWC_FOOT}`;
+}
+function bkRemHtml(b){
+  const F="font-family:Arial,Helvetica,sans-serif;", amt=bkAmount(b);
+  const row=(k,v)=>`<tr><td style="${F}padding:6px 0;width:110px;color:#666;font-size:14px">${k}</td><td style="${F}padding:6px 0;color:#111;font-size:15px;font-weight:700">${esc(v)}</td></tr>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;padding:0;background:#f3f0f5">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f0f5"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border:3px solid #FA1294;border-radius:14px;overflow:hidden">
+<tr><td style="${F}background:#111;padding:20px 16px;text-align:center;font-size:28px;font-weight:900;font-style:italic"><span style="color:#fff">FOOT</span><span style="color:#B4FA2A">WORK</span> <span style="color:#FA1294">PH</span></td></tr>
+<tr><td style="${F}padding:20px 18px 6px;font-size:20px;font-weight:800;color:#111">⏰ Payment reminder</td></tr>
+<tr><td style="${F}padding:0 18px 10px;font-size:15px;color:#333">Hi ${esc(b.name)}, you booked a slot but we have not received your payment yet.</td></tr>
+<tr><td style="padding:0 18px 12px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${row("Class",b.class_name||"Class")}${row("When",bkWhen(b))}${row("Booking ref",b.ref)}${amt?row("Amount",peso(amt)):""}</table></td></tr>
+<tr><td style="padding:0 18px 14px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f3fa;border-radius:10px"><tr><td style="${F}padding:14px 16px;font-size:14px;line-height:1.6;color:#222">
+<b style="color:#E8157F">HOW TO PAY</b><br>• Pay via ${esc(PAY_LINE)}.<br>• Send your booking ref and payment screenshot to our Facebook page: <b>Footwork PH</b>.<br><br>Already paid? Just send us your screenshot.</td></tr></table></td></tr>
+<tr><td style="${F}background:#FA1294;padding:12px 16px;font-size:13px;line-height:1.45;font-weight:700;color:#fff;text-align:center">Slots are first to pay, first to reserve. Please pay soon to keep your spot.</td></tr>
+<tr><td style="${F}padding:14px 16px;font-size:12px;line-height:1.5;color:#555;text-align:center">${esc(FWC_FOOT)}</td></tr>
+</table></td></tr></table></body></html>`;
+}
+function bkMarkReminded(b){ S.settings.bkReminded=S.settings.bkReminded||{}; const live=new Set(BK.map(x=>x.id)); Object.keys(S.settings.bkReminded).forEach(k=>{ if(!live.has(k)) delete S.settings.bkReminded[k]; }); S.settings.bkReminded[b.id]=new Date().toISOString(); save(); }
+async function bkSendRem(b){
+  const to = bkEmailOf(b);
+  if(!to || !EMAIL_RX.test(to)) return "noemail";
+  if(!mailReady()) return "nomail";
+  try{ const r = await mailPost({to:[to], subject:`Payment reminder: ${b.class_name||"Class"} · ${bkWhen(b)} · Footwork PH`, html:bkRemHtml(b), text:bkRemText(b)}); return r&&r.ok?"sent":"fail"; }catch(e){ return "fail"; }
 }
 async function bkProof(id){
   const b = BK.find(x=>x.id===id); if(!b||!b.proof_path) return;
@@ -2984,6 +3014,8 @@ function handleAct(b){
   const reRender = () => { if(!dlg.open) render(); };
   if(a==="newSession") sessionDlg();
   else if(a==="bkMsg"){ const b=BK.find(x=>x.id===id); if(b) copyText(bkConfText(b),"Message copied. Paste it in Messenger."); }
+  else if(a==="bkRemind"){ const bk=BK.find(x=>x.id===id); if(bk){ b.disabled=true; b.textContent="Sending…"; bkSendRem(bk).then(r=>{ if(r==="sent") bkMarkReminded(bk); toast(r==="sent"?"Reminder sent to "+bkEmailOf(bk):r==="noemail"?"No email on file. Use Copy reminder.":r==="nomail"?"Email not set up. Use Copy reminder.":"Email failed. Use Copy reminder."); render(); }); } }
+  else if(a==="bkRemindCopy"){ const b=BK.find(x=>x.id===id); if(b){ copyText(bkRemText(b),"Reminder copied. Paste it in Messenger."); bkMarkReminded(b); render(); } }
   else if(a==="bkResend"){ const b=BK.find(x=>x.id===id); if(b) bkSendConf(b).then(r=>toast(r==="sent"?"Email sent":r==="noemail"?"No email on file. Use Copy message.":"Email failed. Use Copy message.")); }
   else if(a==="bkConfirm") bkSet(id,{status:"confirmed"},"Booking confirmed");
   else if(a==="bkUnconfirm") bkSet(id,{status:"pending"},"Back to waiting for payment");
