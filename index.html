@@ -2174,19 +2174,25 @@ function copyInterest(id){
   try{ navigator.clipboard.writeText(text).then(ok, bad); }catch(e){ bad(); }
 }
 function vMembers(){
-  const q = peopleQ.toLowerCase();
-  const list = S.members.filter(m=>m.type===peopleSeg && (!q || (m.name+" "+(m.contact||"")+" "+(m.memberNo||"")+" "+(m.email||"")).toLowerCase().includes(q))).sort((a,b)=>a.name.localeCompare(b.name));
+  /* search: every word must match (so "Cruz Ana" finds Ana Cruz); searches members AND non-members */
+  const words = peopleQ.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const hay = m => (m.name+" "+(m.contact||"")+" "+String(m.contact||"").replace(/\D/g,"")+" "+(m.memberNo||"")+" "+(m.email||"")).toLowerCase();
+  const searching = words.length>0;
+  const list = S.members.filter(m=>(searching || m.type===peopleSeg) && words.every(w=>hay(m).includes(w)))
+    .sort((a,b)=>searching && a.type!==b.type ? (a.type==="member"?-1:1) : a.name.localeCompare(b.name));
   const cm = S.members.filter(m=>m.type==="member").length, cn = S.members.length-cm;
   const isMem = peopleSeg==="member";
+  const searchBox = `<label class="f" style="margin-bottom:14px">🔎 Search all students<input id="mq" type="search" value="${esc(peopleQ)}" placeholder="Type a name, surname, contact no., or member no." autocomplete="off"></label>
+  ${searching?`<p class="small muted" style="margin:-6px 0 12px">${list.length} found in Members and Non-members. Clear the search to see the full list.</p>`:""}`;
   return `<div class="row between" style="margin-bottom:12px"><h2>Students</h2><button class="btn" data-act="${isMem?"newMember":"newNon"}">${isMem?"Add member":"Add non-member"}</button></div>
+  ${searchBox}
   <div class="seg" role="group" aria-label="Student type"><button data-seg="member" aria-pressed="${isMem}">Members (${cm})</button><button data-seg="nonmember" aria-pressed="${!isMem}">Non-members (${cn})</button></div>
   <p class="small muted" style="margin:-4px 0 12px">${isMem?`Paid the membership fee. Session rate: ${peso(rate("member"))} or their package.`:`No membership fee. Pays per session: ${peso(rate("nonMember"))}.`}</p>
-  ${isMem?"":`<div class="row" style="margin:-4px 0 14px"><button type="button" class="btn lime" data-act="sendNon">Email non-members: booking link &amp; rates</button></div>`}
-  ${isMem?"":interestSummary()}
-  <label class="f" style="margin-bottom:14px">Search<input id="mq" type="search" value="${esc(peopleQ)}" placeholder="Name, contact, or member no."></label>
+  ${isMem||searching?"":`<div class="row" style="margin:-4px 0 14px"><button type="button" class="btn lime" data-act="sendNon">Email non-members: booking link &amp; rates</button></div>`}
+  ${isMem||searching?"":interestSummary()}
   ${isMem&&cm?`<div class="row" style="margin:-4px 0 14px"><button type="button" class="btn sm ghost" data-act="scan">Scan member card</button><button type="button" class="btn sm" data-act="cardsPick">🪪 Print membership cards</button><button type="button" class="btn sm ghost" data-act="qrZip">Download all card QR codes</button></div>`:""}
-  <div class="card">${list.length?`<ul class="list">${list.map(m=>{const st=memberStats(m);return `<li><div class="row between">
-    <div style="min-width:0"><b>${esc(m.name)}</b>${isMem&&m.memberNo?` <span class="pill pink">${esc(m.memberNo)}</span>`:""}
+  <div class="card">${list.length?`<ul class="list">${list.map(m=>{const st=memberStats(m); const isMem = m.type==="member"; return `<li><div class="row between">
+    <div style="min-width:0"><b>${esc(m.name)}</b>${isMem&&m.memberNo?` <span class="pill pink">${esc(m.memberNo)}</span>`:""}${searching?` <span class="pill">${isMem?"Member":"Non-member"}</span>`:""}
     ${isMem&&(m.validUntil||m.contract)?`<div class="small muted">${[m.validUntil?`Valid until ${fmtDate(m.validUntil)}`:"", m.validUntil&&!cardExpired(m)?`🔔 Remind ${fmtDate(remindDate(m))}`:"", m.contract?"Contract on file":""].filter(Boolean).join(" · ")}</div>`:""}
     ${isMem?`<div class="small muted">${esc(st.p?.name||"Per-session member")}${st.left!==null?` · ${st.left} left`:st.p?" · unlimited":""}${st.exp?` · ends ${fmtDate(st.exp)}`:""}</div>
     <div class="small muted">${st.visits} visit${st.visits===1?"":"s"}${st.last?` · last ${fmtDate(st.last)}`:""}</div>`
@@ -2197,7 +2203,7 @@ function vMembers(){
     ${!isMem&&st.p?`<div class="small muted">📦 ${esc(st.p.name)}${st.left!==null?` · ${st.left} left`:""}${st.exp?` · ends ${fmtDate(st.exp)}`:""}</div>`:""}
     ${!isMem&&interestNames(m).length?`<div class="small muted">Interested in: ${esc(interestNames(m).join(", "))}</div>`:""}</div>
     <div class="row"><span class="pill ${st.cls}">${st.status}</span>${isMem?`<button class="btn sm ghost" data-act="printContract" data-id="${m.id}" title="Print contract" aria-label="Print contract for ${esc(m.name)}">🖨</button><button class="btn sm ghost" data-act="printCard" data-id="${m.id}" title="Print ID card" aria-label="Print ID card for ${esc(m.name)}">🪪</button>`:""}${!isMem&&!isMinor(m)?`<button class="btn sm ghost" data-act="printWaiver" data-id="${m.id}" title="Print waiver" aria-label="Print waiver for ${esc(m.name)}">📝</button>`:""}${isMinor(m)?`<button class="btn sm ghost" data-act="printConsent" data-id="${m.id}" title="Print parent consent" aria-label="Print parent consent for ${esc(m.name)}">👪</button>`:""}<button class="btn sm ghost" data-act="editPerson" data-id="${m.id}">Edit</button></div></div></li>`;}).join("")}</ul>`
-    :`<p class="empty">${isMem?"No members yet. Add your first member.":"No non-members yet. Walk-ins you add in a class show up here."}</p>`}</div>`;
+    :`<p class="empty">${searching?"No student matches that search.":isMem?"No members yet. Add your first member.":"No non-members yet. Walk-ins you add in a class show up here."}</p>`}</div>`;
 }
 
 function instPeriod(i, r){
