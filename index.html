@@ -424,7 +424,7 @@ const DEFAULT = {
 };
 const LISTS = ["members","sessions","expenses","rentals","items","sales"];
 let S = structuredClone(DEFAULT);
-let tab = "dash", peopleSeg = "member", peopleQ = "", classTypeFilter = "", classView = "", calWeek = "";
+let tab = "dash", peopleSeg = "member", peopleQ = "", instrQ = "", classTypeFilter = "", classView = "", calWeek = "";
 let docRef = null, saveTimer = null, pendingSave = false, readOnly = false;
 
 /* ---------- member numbers ---------- */
@@ -2294,11 +2294,16 @@ function breakdownTable(ses, keyFn, labelFn, title){
 const teaches = i => (i.types||[]).map(id=>ctype(id)?.name).filter(Boolean);
 function vInstructors(){
   const ins = S.settings.instructors, r=periodRange();
-  const all = ins.map(i=>({i, m:instPeriod(i,r)}));
-  const T = all.reduce((a,x)=>({sales:a.sales+x.m.sales, earned:a.earned+x.m.earned, pending:a.pending+x.m.pending, n:a.n+x.m.ses.length}),{sales:0,earned:0,pending:0,n:0});
+  const iw = instrQ.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const ihay = i => (i.name+" "+(i.contact||"")+" "+String(i.contact||"").replace(/\D/g,"")+" "+teaches(i).join(" ")).toLowerCase();
+  const allIns = ins.map(i=>({i, m:instPeriod(i,r)}));
+  const all = allIns.filter(({i})=>iw.every(w=>ihay(i).includes(w)));
+  const T = allIns.reduce((a,x)=>({sales:a.sales+x.m.sales, earned:a.earned+x.m.earned, pending:a.pending+x.m.pending, n:a.n+x.m.ses.length}),{sales:0,earned:0,pending:0,n:0});
   return `<div class="row between" style="margin-bottom:12px"><h2>Instructors</h2><button class="btn" data-act="newInstr">Add instructor</button></div>
+  ${ins.length?`<label class="f" style="margin-bottom:14px">🔎 Search instructors<input id="iq" type="search" value="${esc(instrQ)}" placeholder="Type a name, surname, contact no., or class" autocomplete="off"></label>
+  ${iw.length?`<p class="small muted" style="margin:-6px 0 12px">${all.length} found. Clear the search to see everyone.</p>`:""}`:""}
   ${periodBar()}
-  ${ins.length>1?`<div class="card"><h3 style="margin-bottom:4px">All instructors</h3><p class="small muted" style="margin:0">${T.n} classes · sales ${peso(T.sales)}</p>
+  ${ins.length>1&&!iw.length?`<div class="card"><h3 style="margin-bottom:4px">All instructors</h3><p class="small muted" style="margin:0">${T.n} classes · sales ${peso(T.sales)}</p>
     <div class="kpis"><div class="kpi"><span>Total commission</span><b class="money">${peso(T.earned)}</b></div><div class="kpi"><span>Pending</span><b class="money">${peso(T.pending)}</b></div></div></div>`:""}
   ${ins.length?all.map(({i,m})=>{ const pct=isSet(i.pct)?+i.pct:+S.settings.instructorPct; const min=isSet(i.min)?+i.min:+S.settings.minPerClass; const tt=teaches(i);
     return `<div class="card"><div class="row between"><div><button class="linkbtn" style="font-size:17px" data-act="openInstr" data-id="${i.id}">${esc(i.name)}</button>
@@ -2313,7 +2318,8 @@ function vInstructors(){
         <div class="kpi"><span>Present / absent</span><b>${m.present} / ${m.absent}</b></div>
       </div>
       <div class="row" style="margin-top:12px"><button class="btn sm ghost" data-act="openInstr" data-id="${i.id}">See breakdown</button><button class="btn sm ghost" data-act="schedFor" data-id="${i.id}">Schedule a class</button><button class="btn sm ghost" data-act="printInstrContract" data-id="${i.id}">🖨 Contract</button></div></div>`; }).join("")
-  :`<div class="card empty">No instructors yet. Add one to track commission and attendance.</div>`}`;
+  :`<div class="card empty">No instructors yet. Add one to track commission and attendance.</div>`}
+  ${ins.length&&!all.length?`<div class="card empty">No instructor matches that search.</div>`:""}`;
 }
 
 function vRental(){
@@ -3180,6 +3186,7 @@ view.addEventListener("change", e=>{
   S.settings[k]=v; save(); render(); toast("Settings saved");
 });
 view.addEventListener("input", e=>{
+  if(e.target.id==="iq"){ instrQ=e.target.value; const pos=e.target.selectionStart; render(); const el=document.getElementById("iq"); if(el){ el.focus(); el.setSelectionRange(pos,pos); } return; }
   if(e.target.id==="mq"){ peopleQ=e.target.value; const pos=e.target.selectionStart; render(); const el=document.getElementById("mq"); el.focus(); el.setSelectionRange(pos,pos); }
 });
 
