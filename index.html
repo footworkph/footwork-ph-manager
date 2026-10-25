@@ -262,6 +262,19 @@ table.t .r{text-align:right}
 .fwd-rate .a span,.fwd-rate .c span{font-weight:600;font-size:6.6pt;letter-spacing:.03em;text-transform:uppercase}
 .fwd-rate .c{display:flex;flex-direction:column;justify-content:center;font-size:10.5pt;font-weight:600;line-height:1.25}
 .fwd-terms{column-count:2;column-gap:6mm;column-fill:balance}
+.fwd-one{padding-top:8mm}
+.fwd-one .fwd-intro{font-size:8.8pt;margin-bottom:1.6mm}
+.fwd-one .fwc-det td{height:7.6mm;padding:.6mm 1.8mm}
+.fwd-one .fwd-rate{margin:1.8mm 0 1.8mm}
+.fwd-one .fwd-rate>div{padding:1.4mm 3.5mm}
+.fwd-one .fwd-rate .a b{font-size:19pt}
+.fwd-one .fwd-terms{column-gap:5mm}
+.fwd-one .fwd-terms li,.fwd-one .fwd-terms p.t{font-size:8.1pt;line-height:1.19;margin-bottom:.25mm}
+.fwd-one .fwd-terms ul{margin-bottom:.3mm}
+.fwd-one .fwc-sh{margin-top:1.4mm;margin-bottom:.8mm}
+.fwd-one .fwc-ack{margin-top:2mm;padding-top:1.2mm;font-size:8.4pt}
+.fwd-one .fwd-sig2{grid-template-columns:repeat(4,1fr);column-gap:5mm;margin-top:1mm}
+.fwd-one .fwd-sig2 .ln{height:11mm;font-size:8.6pt}
 .fwd-terms ul{margin:0 0 .6mm;padding-left:4.2mm}
 .fwd-terms li{font-size:8.9pt;line-height:1.26;margin-bottom:.5mm;break-inside:avoid}
 .fwd-terms p.t{margin:0 0 .8mm;font-size:8.9pt;line-height:1.26}
@@ -1183,7 +1196,8 @@ function instrPages(d){
       "The Studio may end it right away for serious misconduct, such as harming a student, theft, or teaching under the influence.",
       "Any unpaid class fee earned before the end date will be paid in full."]));
   const ft = `<div class="fwc-ft">${esc(FWC_FOOT)}</div>`;
-  const p1 = `<section class="fwc-page">${fwdHead("FREELANCE INSTRUCTOR AGREEMENT","PAGE 1 · DETAILS")}
+  /* one A4 page: details, all terms in two columns, then signatures */
+  return `<section class="fwc-page fwd-one">${fwdHead("FREELANCE INSTRUCTOR AGREEMENT","SIGN · KEEP A COPY")}
     <p class="fwd-intro">This agreement is made on ____________________ in Binangonan, Rizal, between <b>Footwork Fitness Studio</b> (brand name: Footwork PH), represented by <b>Footwork PH Management</b> (the "Studio"), and the Instructor below.</p>
     <table class="fwc-det"><tbody>
       <tr>${fwdCell("Instructor name", v(d.name), 2)}${fwdCell("Contact no. / GCash", v(d.contact))}</tr>
@@ -1191,9 +1205,7 @@ function instrPages(d){
       <tr>${fwdCell("Studio address","JRMD Bldg, Barrio Rd, Tayuman, Binangonan, Rizal",2)}${fwdCell("Studio contact","0933 855 2646 / 0919 002 6419")}</tr>
     </tbody></table>
     <div class="fwd-rate"><div class="a"><span>${d.mode==="pct"?"Commission":"Fixed rate"}</span><b>${big}</b></div><div class="c"><span>Classes assigned</span>${esc(classes)}</div></div>
-    <div class="fwd-terms">${S1.join("")}</div>${ft}</section>`;
-  const p2 = `<section class="fwc-page">${fwdHead("FREELANCE INSTRUCTOR AGREEMENT","PAGE 2 · TERMS")}
-    <div class="fwd-terms">${S2.join("")}</div>
+    <div class="fwd-terms">${S1.join("")}${S2.join("")}</div>
     <div class="fwc-ack"><b>${++n}.&nbsp; AGREEMENT</b><br>Both sides read and understood this agreement and sign it freely. Each side keeps one signed copy.</div>
     <div class="fwd-sig2">
       <div><div class="ln">FOOTWORK PH MANAGEMENT</div><div class="fwc-lab">Authorized representative · signature / date</div></div>
@@ -1201,8 +1213,7 @@ function instrPages(d){
       <div><div class="ln"></div><div class="fwc-lab">Witness · signature over printed name</div></div>
       <div><div class="ln"></div><div class="fwc-lab">Witness · signature over printed name</div></div>
     </div>
-    <div class="fwc-ft" style="margin-top:4mm">${esc(FWC_FOOT)}</div></section>`;
-  return p1 + p2;
+    <div class="fwc-ft" style="margin-top:3mm">${esc(FWC_FOOT)}</div></section>`;
 }
 
 function consentDocData(m){ return Object.assign({}, m, {docKind:"consent"}); }
