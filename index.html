@@ -1766,8 +1766,14 @@ function vDash(){
   const setup = !S.settings.instructors.length || !(+S.settings.rates.nonMember.reg);
   const alerts = S.members.filter(m=>m.type==="member").map(m=>({m,st:memberStats(m)})).filter(x=>x.st.cls!=="ok");
   const low = S.items.map(x=>({x,st:itemStock(x.id)})).filter(o=>o.st<=(+o.x.lowAt||3));
-  const upcoming = S.sessions.filter(s=>s.date>=todayISO()).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)).slice(0,4);
-  const upRent = S.rentals.filter(x=>x.date>=todayISO() && x.status!=="cancelled").sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)).slice(0,3);
+  /* every class and rental for 7 days, starting from the next day that has something booked */
+  const upAll = [...S.sessions.filter(s=>s.date>=todayISO()).map(s=>({k:"s",d:s.date,t:s.time||"",x:s})),
+                 ...S.rentals.filter(x=>x.date>=todayISO() && x.status!=="cancelled").map(x=>({k:"r",d:x.date,t:x.time||"",x}))]
+    .sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  const upEnd = upAll.length ? addDays(upAll[0].d, 6) : "";
+  const upWeek = upAll.filter(o=>o.d<=upEnd);
+  const upDays = [...new Set(upWeek.map(o=>o.d))];
+  const upLater = upAll.length - upWeek.length;
   const bk = buckets(r);
   const bkRows = bk.list.map(b=>({b, t:totals(b)})).filter(o=>o.t.income||o.t.exp);
   const types = Object.entries(t.byType).sort((a,b)=>b[1].gross-a[1].gross);
@@ -1808,8 +1814,12 @@ function vDash(){
     ${alerts.map(x=>`<div class="alert"><b>${esc(x.m.name)}</b> — ${x.st.status}${x.st.left!==null?` · ${x.st.left} sessions left`:""}${x.st.exp?` · ends ${fmtDate(x.st.exp)}`:""}</div>`).join("")}
     ${low.map(o=>`<div class="alert"><b>${esc(o.x.name)}</b> — low stock (${o.st} left)</div>`).join("")}</div>`:""}
   <div class="card"><div class="row between" style="margin-bottom:6px"><h3>Coming up</h3><button class="btn sm" data-act="newSession">Add class</button></div>
-  ${upcoming.length||upRent.length?`<ul class="list">${upcoming.map(s=>`<li><div class="row between"><span><b>${fmtDate(s.date)}</b> ${fmtTime(s.time)} · ${esc(typeName(s))}</span><span class="muted small">${esc(instr(s.instructorId)?.name||"No instructor")} · ${slotsTaken(s)}/${S.settings.capacity} pax${slotsTaken(s)>=+S.settings.capacity?" · FULL":""}${pendTag(s)}</span></div></li>`).join("")}
-    ${upRent.map(x=>`<li><div class="row between"><span><b>${fmtDate(x.date)}</b> ${fmtTime(x.time)} · Rental</span><span class="muted small">${esc(x.renter)} · ${(+x.hours||0)+(+x.extHours||0)} hrs</span></div></li>`).join("")}</ul>`:`<p class="empty">Nothing scheduled yet.</p>`}
+  ${upWeek.length?upDays.map(d=>`<h3 style="margin:14px 0 4px">${fmtDate(d)} <span class="muted small" style="font-weight:400">· ${new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long"})} · ${upWeek.filter(o=>o.d===d).length} scheduled</span></h3>
+    <ul class="list">${upWeek.filter(o=>o.d===d).map(o=>{ const s=o.x; return o.k==="s"
+      ? `<li><div class="row between"><span><b>${fmtTime(s.time)}</b> · ${esc(typeName(s))}</span><span class="muted small">${esc(instr(s.instructorId)?.name||"No instructor")} · ${slotsTaken(s)}/${S.settings.capacity} pax${slotsTaken(s)>=+S.settings.capacity?" · FULL":""}${pendTag(s)}</span></div></li>`
+      : `<li><div class="row between"><span><b>${fmtTime(s.time)}</b> · Rental</span><span class="muted small">${esc(s.renter)} · ${(+s.hours||0)+(+s.extHours||0)} hrs</span></div></li>`; }).join("")}</ul>`).join("")
+    + (upLater?`<p class="small muted" style="margin:10px 0 0">${upLater} more after ${fmtDate(upEnd)}. See the Classes tab.</p>`:"")
+    :`<p class="empty">Nothing scheduled yet.</p>`}
   </div>`;
 }
 
