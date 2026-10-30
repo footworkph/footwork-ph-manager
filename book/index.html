@@ -362,12 +362,12 @@ async function shrink(file){
     return b && b.size < file.size ? new File([b], "proof.jpg", {type:"image/jpeg"}) : file;
   }catch(e){ return file; }
 }
-async function upload(file){
+async function upload(file, owner){
   file = await shrink(file);
   if(file.size > 5*1024*1024) return null;
   const ext = file.type==="application/pdf" ? "pdf" : file.type==="image/png" ? "png" : file.type==="image/webp" ? "webp" : /hei[cf]/.test(file.type) ? "heic" : "jpg";
   const id = (crypto.randomUUID ? crypto.randomUUID() : Date.now()+"-"+Math.random().toString(36).slice(2));
-  const path = `${data.owner}/${id}.${ext}`;
+  const path = `${owner||(data&&data.owner)}/${id}.${ext}`;
   try{
     const r = await fetch(`${SB_URL}/storage/v1/object/fw-booking-proofs/${path}`, {method:"POST", headers:{"apikey":SB_KEY,"Content-Type":file.type||"image/jpeg","x-upsert":"false"}, body:file});
     return r.ok ? path : null;
@@ -420,7 +420,10 @@ const GERR = Object.assign({}, ERR, {
   bad_details: "Please check your name, mobile number, email and Facebook name.",
   too_many: "You already have 3 upcoming guest bookings. Please message our Facebook page.",
   busy: "Lots of bookings right now. Please try again in a few minutes.",
-  already: "This mobile number already has a slot in this class."
+  already: "This mobile number already has a slot in this class.",
+  no_booking: "We couldn't find that booking ref with that mobile number. Use the mobile number you booked with.",
+  already_confirmed: "This booking is already confirmed. See you at the studio!",
+  cancelled: "This booking was cancelled. Please book again or message our Facebook page."
 });
 const fmtWhen = iso => { const d = new Date(iso); return d.toLocaleDateString("en-PH",{weekday:"short",month:"short",day:"numeric"})+", "+d.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}); };
 function upsell(){
@@ -446,7 +449,8 @@ function renderGuest(){
   $("gOpenTxt").textContent = G.guestOpenHours>=168 ? "Guest booking is open now." : "Members get first pick, so guest booking opens "+G.guestOpenHours+" hours before each class."; $("gCutH").textContent = G.cutoffHours+" hours";
   const mine = gGet().filter(b=>new Date(b.when) > new Date(Date.now()-3*3600e3));
   gSet(mine);
-  $("gMine").innerHTML = mine.length ? `<h2>Your guest bookings</h2>`+mine.map(b=>`<div class="card" style="margin-bottom:10px"><div class="row"><div><div class="cn">${esc(b.cls)}</div><div class="co">${esc(fmtWhen(b.when))} · Ref ${esc(b.ref)}</div></div><button class="btn sm" data-gshow="${esc(b.ref)}">Show booking</button></div></div>`).join("") : "";
+  $("gMine").innerHTML = (mine.length ? `<h2>Your guest bookings</h2>`+mine.map(b=>`<div class="card" style="margin-bottom:10px"><div class="row"><div><div class="cn">${esc(b.cls)}</div><div class="co">${esc(fmtWhen(b.when))} · Ref ${esc(b.ref)}${b.free?"":b.proofSent?" · Proof sent ✓":" · Waiting for payment"}</div></div><button class="btn sm" data-gshow="${esc(b.ref)}">${b.free||b.proofSent?"Show booking":"Pay / upload proof"}</button></div></div>`).join("") : "")
+    + `<button class="btn ghost block" style="margin:0 0 14px" data-gupload="1">📎 Already booked? Upload proof of payment</button>`;
   const types = [...new Set(G.sessions.map(s=>s.class))];
   if(gType && !types.includes(gType)) gType="";
   $("gChips").innerHTML = types.length>1 ? [`<button class="chip" aria-pressed="${!gType}" data-gtype="">All classes</button>`, ...types.map(t=>`<button class="chip" aria-pressed="${gType===t}" data-gtype="${esc(t)}">${esc(t)}</button>`)].join("") : "";
@@ -512,10 +516,51 @@ function gBookSheet(s){
     const r = await rpc("fw_guest_book", {p_session:s.id, p_name:name, p_mobile:mob, p_email:em, p_fb:fb, p_agreed:true});
     if(!r.ok){ err(GERR[r.error]||ERR.network); $("gGo").disabled=false; $("gGo").textContent="Reserve my slot"; if(["full","closed","already","no_session","members_only"].includes(r.error)) loadGuest(true); return; }
     const when = s.date+"T"+s.time+":00+08:00";
-    const b = {ref:r.ref, cls:s.class, when, coach:s.coach, name, email:em, free:!!(r.free||s.free)};
+    const b = {ref:r.ref, cls:s.class, when, coach:s.coach, name, email:em, mob, free:!!(r.free||s.free)};
     gSet([...gGet().filter(x=>x.ref!==b.ref), b]);
     loadGuest(true); gDone(b, true);
   };
+}
+function gProofForm(b){
+  if(b.proofSent) return `<div class="rules" style="border-color:var(--lime)"><span class="pill lime">Proof sent ✓</span> We're checking your payment. Your slot is confirmed once we verify it.</div>`;
+  return `<div class="rules" style="border-color:var(--lime)">
+    <div style="font-weight:700;margin-bottom:4px">📎 Upload your proof of payment</div>
+    ${b.mob?"":`<label for="gpMob">Mobile number you booked with</label><input type="tel" id="gpMob" inputmode="tel" placeholder="09xx xxx xxxx">`}
+    <label for="gpRef">GCash / Maya reference no. (optional)</label>
+    <input type="text" id="gpRef" maxlength="60" placeholder="e.g. 1234 567 890123" inputmode="numeric">
+    <label>Screenshot of your payment</label>
+    <label class="file"><input type="file" id="gpFile" accept="image/*,application/pdf"><span>📎</span><span id="gpFileName">Tap to choose a photo</span></label>
+    <div class="err" id="gpErr" hidden></div>
+    <button class="btn pink block" id="gpGo" type="button">Send proof of payment</button></div>`;
+}
+function gProofWire(b, getRef){
+  if(!$("gpGo")) return;
+  $("gpFile").onchange = e=>{ const f=e.target.files[0]; $("gpFileName").textContent = f ? f.name : "Tap to choose a photo"; };
+  $("gpGo").onclick = async ()=>{
+    const err = m => { $("gpErr").textContent=m; $("gpErr").hidden=false; $("gpGo").disabled=false; $("gpGo").textContent="Send proof of payment"; };
+    const f = $("gpFile").files[0], refNo = $("gpRef").value.trim(), mob = b.mob || ($("gpMob") && $("gpMob").value.trim()) || "";
+    const ref = getRef ? getRef() : b.ref;
+    if(!/^BK-?[A-Z0-9]{4,}$/i.test(ref||"")) return err("Please type your booking ref (example: BK-A307FE).");
+    if(mob.replace(/\D/g,"").length<10) return err("Please type the mobile number you booked with.");
+    if(!f) return err("Please choose your payment screenshot.");
+    $("gpGo").disabled = true; $("gpGo").innerHTML = `<span class="spin"></span>`;
+    const path = await upload(f, G && G.owner);
+    if(!path) return err("Upload failed. Try a smaller photo, or send it to our Facebook page.");
+    const r = await rpc("fw_guest_proof", {p_ref:ref, p_mobile:mob, p_pay_ref:refNo||null, p_proof_path:path});
+    if(!r.ok) return err(GERR[r.error]||ERR.network);
+    const nb = Object.assign({}, b, {mob, proofSent:true});
+    if(b.cls) gSet([...gGet().filter(x=>x.ref!==b.ref), nb]);
+    toast("Proof sent! We'll confirm your slot soon.");
+    if(b.cls){ renderGuest(); gDone(nb, false); } else closeSheet();
+  };
+}
+function gUploadSheet(){
+  openSheet(`<h3>Upload proof of payment</h3>
+    <p class="small muted">For guests who already booked. Use your booking ref and the mobile number you booked with.</p>
+    <label for="guRef">Booking ref</label><input type="text" id="guRef" maxlength="20" placeholder="BK-XXXXXX" autocapitalize="characters">
+    ${gProofForm({mob:""})}
+    <button class="btn ghost block" style="margin-top:10px" data-close>Close</button>`);
+  gProofWire({mob:""}, ()=>$("guRef").value.trim().toUpperCase());
 }
 function gDone(b, fresh){
   openSheet(`<p class="small" style="margin:0 0 4px;color:var(--lime);font-weight:700">📸 SCREENSHOT THIS PAGE</p>
@@ -533,16 +578,19 @@ function gDone(b, fresh){
     </div>
     <ol class="small" style="padding-left:18px;line-height:1.6;margin:10px 0">
       <li>Pay your class fee to the number above.</li>
-      <li>Screenshot this booking and your payment receipt.</li>
-      <li>Send both to our Facebook page <b>Footwork PH</b>.</li>
+      <li>Upload your payment screenshot below.</li>
+      <li>We check it and confirm your slot.</li>
     </ol>
+    ${gProofForm(b)}
     <p class="small muted">Your slot is confirmed once we verify your payment.${b.email?" We'll email your confirmation to <b>"+esc(b.email)+"</b>. Please check your inbox and spam folder.":""}</p>${PAY_REMIND}${BEFORE(false)}
     ${upsell()}
     <button class="btn block" style="margin-top:16px" data-close>Done</button>`}`);
+  gProofWire(b);
   if($("gCopy")) $("gCopy").onclick = ()=>{ try{ navigator.clipboard.writeText(G.payNumber.replace(/\D/g,"")).then(()=>toast("Number copied")); }catch(e){ toast(G.payNumber); } };
 }
 document.addEventListener("click", e=>{
-  const b = e.target.closest("[data-gbook],[data-gshow],[data-gtype]"); if(!b || !G) return;
+  const b = e.target.closest("[data-gbook],[data-gshow],[data-gtype],[data-gupload]"); if(!b || !G) return;
+  if(b.hasAttribute("data-gupload")){ gUploadSheet(); return; }
   if(b.hasAttribute("data-gtype")){ gType=b.dataset.gtype; renderGuest(); return; }
   if(b.dataset.gshow){ const x=gGet().find(y=>y.ref===b.dataset.gshow); if(x) gDone(x,false); return; }
   const s = G.sessions.find(x=>x.id===b.dataset.gbook); if(s) gBookSheet(s);
