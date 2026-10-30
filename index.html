@@ -2015,6 +2015,73 @@ function sendSchedDlg(){
   const upd=()=>{ const k=body.querySelectorAll("[data-rcp]:checked").length; document.getElementById("dlgSave").textContent = k?`Send to ${k}`:"Send"; };
   body.onchange=upd; upd();
 }
+/* ---------- Viber community invite (members) ---------- */
+const VIBER_URL = "https://invite.viber.com/?g2=AQBXhuHJNY6NE1dDxUUw1htiMJkPsMMMXz%2BJNIv4Ed3MK5dn6nnL7xmA8kuON9Rv";
+const viberText = () => `Calling all members and enthusiasts! 📣
+
+Stay updated, connect with fellow members, and never miss an update from Footwork PH.
+Come hang out with us in our official Viber community!
+
+Click here to join:
+🔗 ${VIBER_URL}
+
+Footwork PH Studio · JRMD Bldg, Barrio Rd, Tayuman, Binangonan, Rizal (beside Alfamart)`;
+function viberHtml(){
+  const F="font-family:Arial,Helvetica,sans-serif;";
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;padding:0;background:#f3f0f5">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f0f5"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border:3px solid #FA1294;border-radius:14px;overflow:hidden">
+<tr><td style="${F}background:#111;padding:20px 16px;text-align:center;font-size:28px;font-weight:900;font-style:italic"><span style="color:#fff">FOOT</span><span style="color:#B4FA2A">WORK</span> <span style="color:#FA1294">PH</span></td></tr>
+<tr><td style="${F}padding:22px 20px 6px;font-size:22px;font-weight:900;color:#111;text-align:center">Calling all members and enthusiasts! &#128227;</td></tr>
+<tr><td style="${F}padding:6px 22px 4px;font-size:15px;line-height:1.6;color:#333;text-align:center">Stay updated, connect with fellow members, and never miss an update from Footwork PH.<br><b>Come hang out with us in our official Viber community!</b></td></tr>
+<tr><td align="center" style="padding:18px 16px 8px"><a href="${VIBER_URL}" target="_blank" style="${F}display:inline-block;background:#7360F2;color:#fff;font-size:17px;font-weight:900;letter-spacing:.5px;text-decoration:none;padding:15px 30px;border-radius:999px">&#128156; JOIN OUR VIBER COMMUNITY</a></td></tr>
+<tr><td style="${F}padding:0 20px 18px;font-size:12px;color:#555;text-align:center;word-break:break-all">Or copy this link: ${VIBER_URL}</td></tr>
+<tr><td style="${F}background:#FA1294;padding:12px 16px;font-size:13px;font-weight:700;color:#fff;text-align:center">Class schedules and member updates are posted in the community first.</td></tr>
+<tr><td style="${F}padding:14px 16px;font-size:12px;line-height:1.5;color:#555;text-align:center">Footwork PH Studio · JRMD Bldg, Barrio Rd, Tayuman, Binangonan, Rizal (beside Alfamart)<br>Facebook: Footwork PH · 0933 855 2646 / 0919 002 6419</td></tr>
+</table></td></tr></table></body></html>`;
+}
+function sendViberDlg(){
+  if(!mailReady()){ toast("Set up email sending first in Settings."); return; }
+  const byName=(a,b)=>a.name.localeCompare(b.name);
+  const act = S.members.filter(m=>m.type==="member" && !cardExpired(m)).sort(byName);
+  const withMail = act.filter(m=>EMAIL_RX.test((m.email||"").trim()));
+  const noMail = act.filter(m=>!EMAIL_RX.test((m.email||"").trim()));
+  const fresh = withMail.filter(m=>!m.viberSentAt).length;
+  const rcp = m => `<label class="rcp"><input type="checkbox" data-rcp="${m.id}" ${m.viberSentAt?"":"checked"}><span class="nm"><b>${esc(m.name)}</b>${m.viberSentAt?` <span class="pill ok">Sent ${esc(fmtDate(m.viberSentAt.slice(0,10)))}</span>`:""}<br><span class="small muted">${esc(m.email.trim())}</span></span></label>`;
+  openDlg("Email Viber community invite", `
+    <p class="small muted" style="margin:0 0 10px">Sends the "Join our Viber community" email with the join button. Members who already got it are unticked.</p>
+    <h3 style="margin:6px 0 2px">Active members (${withMail.length})</h3>
+    ${withMail.length?`<div class="row" style="margin:4px 0"><button type="button" class="btn sm ghost" id="vb_all">Tick all</button><button type="button" class="btn sm ghost" id="vb_new">Only not sent yet (${fresh})</button><button type="button" class="btn sm ghost" id="vb_none">Untick all</button></div>${withMail.map(rcp).join("")}`:`<p class="small muted">No active member has an email saved yet.</p>`}
+    ${noMail.length?`<p class="small muted" style="margin:8px 0 0">No email saved: ${noMail.map(m=>esc(m.name)).join(", ")}. Send them the link on Messenger instead.</p>`:""}
+    <div class="row" style="margin-top:10px"><button type="button" class="btn sm ghost" id="vb_copy">Copy message for Messenger</button></div>
+    <details style="margin-top:12px"><summary class="small"><b>Preview email</b></summary><iframe class="mailprev" id="vb_prev" sandbox="" title="Email preview"></iframe></details>`,
+  { saveLabel:"Send", onSave:()=>{
+      const ids=[...document.querySelectorAll("#dlgBody [data-rcp]:checked")].map(x=>x.dataset.rcp);
+      const ms=ids.map(id=>member(id)).filter(Boolean);
+      const to=[...new Set(ms.map(m=>(m.email||"").trim().toLowerCase()).filter(e=>EMAIL_RX.test(e)))];
+      if(!to.length){ toast("Tick at least one member"); return false; }
+      if(!navigator.onLine){ toast("You're offline. Connect to the internet first."); return false; }
+      const btn=document.getElementById("dlgSave"); btn.disabled=true; btn.textContent="Sending…";
+      mailPost({to, subject:"Join the Footwork PH Viber community 💜", html:viberHtml(), text:viberText()})
+        .then(r=>{
+          if(!r || !r.ok) throw new Error((r&&r.error)||"Not sent");
+          const failed=new Set((r.failed||[]).map(x=>String(x.to||x).toLowerCase())), now=new Date().toISOString();
+          ms.forEach(m=>{ if(!failed.has((m.email||"").trim().toLowerCase())) m.viberSentAt=now; });
+          save(); dlg.close(); render();
+          toast(`Viber invite sent to ${r.sent} ${r.sent===1?"member":"members"}`+(r.failed&&r.failed.length?` · ${r.failed.length} failed`:""));
+        })
+        .catch(err=>{ btn.disabled=false; btn.textContent="Send"; toast("Not sent: "+(err&&err.message||"check your connection")); });
+      return false;
+    } });
+  const body=document.getElementById("dlgBody");
+  const setBy = fn => withMail.forEach(m=>{ const c=body.querySelector(`[data-rcp="${m.id}"]`); if(c) c.checked=fn(m); });
+  const on=(id,fn)=>{ const e=document.getElementById(id); if(e) e.onclick=fn; };
+  on("vb_all",()=>{ setBy(()=>true); upd(); }); on("vb_none",()=>{ setBy(()=>false); upd(); }); on("vb_new",()=>{ setBy(m=>!m.viberSentAt); upd(); });
+  on("vb_copy",()=>copyText(viberText(),"Message copied"));
+  const f=document.getElementById("vb_prev"); if(f) f.srcdoc=viberHtml();
+  const upd=()=>{ const k=body.querySelectorAll("[data-rcp]:checked").length; document.getElementById("dlgSave").textContent = k?`Send to ${k}`:"Send"; };
+  body.onchange=upd; upd();
+}
 /* ---------- invite email for non-members ---------- */
 const GUEST_URL = BOOK_URL + "#guest";
 const PAY_LINE = "GCash or Maya 0933-855-2646 (Anjeleen P.)";
@@ -2281,7 +2348,7 @@ function vMembers(){
   ${searchBox}
   <div class="seg" role="group" aria-label="Student type"><button data-seg="member" aria-pressed="${isMem}">Members (${cm})</button><button data-seg="nonmember" aria-pressed="${!isMem}">Non-members (${cn})</button></div>
   <p class="small muted" style="margin:-4px 0 12px">${isMem?`Paid the membership fee. Session rate: ${peso(rate("member"))} or their package.`:`No membership fee. Pays per session: ${peso(rate("nonMember"))}.`}</p>
-  ${searching?"":`<div class="row" style="margin:-4px 0 14px">${isMem?`<button type="button" class="btn lime" data-act="sendMem">Email members: booking link &amp; rates</button>`:`<button type="button" class="btn lime" data-act="sendNon">Email non-members: booking link &amp; rates</button>`}</div>`}
+  ${searching?"":`<div class="row" style="margin:-4px 0 14px">${isMem?`<button type="button" class="btn lime" data-act="sendMem">Email members: booking link &amp; rates</button><button type="button" class="btn" data-act="sendViber">💜 Email Viber community invite</button>`:`<button type="button" class="btn lime" data-act="sendNon">Email non-members: booking link &amp; rates</button>`}</div>`}
   ${isMem||searching?"":interestSummary()}
   ${isMem&&cm?`<div class="row" style="margin:-4px 0 14px"><button type="button" class="btn sm ghost" data-act="scan">Scan member card</button><button type="button" class="btn sm" data-act="cardsPick">🪪 Print membership cards</button><button type="button" class="btn sm ghost" data-act="qrZip">Download all card QR codes</button></div>`:""}
   <div class="card">${list.length?`<ul class="list">${list.map(m=>{const st=memberStats(m); const isMem = m.type==="member"; return `<li><div class="row between">
@@ -3148,6 +3215,7 @@ function handleAct(b){
   else if(a==="sendSched") sendSchedDlg();
   else if(a==="sendNon") sendNonDlg();
   else if(a==="sendMem") sendNonDlg(true);
+  else if(a==="sendViber") sendViberDlg();
   else if(a==="copyScript") copyText(mailScript(),"Script copied");
   else if(a==="mailTest") mailTest();
   else if(a==="setStatus"){ ses().instStatus=b.dataset.v; save(); toast(b.dataset.v==="absent"?"Marked absent":"Marked present"); reRender(); }
