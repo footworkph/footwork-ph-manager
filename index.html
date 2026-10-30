@@ -764,6 +764,7 @@ async function loadBookings(){
 const bkFor = sid => BK.filter(b=>b.class_id===sid);
 const bkPend = s => bkFor(s.id).filter(b=>b.status!=="confirmed" && !(s.attendees||[]).some(a=>a.memberId && a.memberId===b.member_id)).length;
 const pendTag = s => { const n=bkPend(s); return n?` · ${n} to confirm`:""; };
+const capOf = s => +(s&&s.capacity) || +S.settings.capacity || 9;
 const slotsTaken = s => { const bk=bkFor(s.id).filter(b=>b.status==="confirmed"), ids=new Set(bk.map(b=>b.member_id).filter(Boolean)); return bk.length + (s.attendees||[]).filter(a=>!ids.has(a.memberId)).length; };
 const bkWhen = b => { const d=new Date(b.starts_at); return d.toLocaleDateString("en-PH",{weekday:"short",month:"short",day:"numeric"})+" · "+d.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}); };
 function bookingsCard(){
@@ -1828,7 +1829,7 @@ function vDash(){
   <div class="card"><div class="row between" style="margin-bottom:6px"><h3>Coming up</h3><button class="btn sm" data-act="newSession">Add class</button></div>
   ${upWeek.length?upDays.map(d=>`<h3 style="margin:14px 0 4px">${fmtDate(d)} <span class="muted small" style="font-weight:400">· ${new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long"})} · ${upWeek.filter(o=>o.d===d).length} scheduled</span></h3>
     <ul class="list">${upWeek.filter(o=>o.d===d).map(o=>{ const s=o.x; return o.k==="s"
-      ? `<li><div class="row between"><span><b>${fmtTime(s.time)}</b> · ${esc(typeName(s))}</span><span class="muted small">${esc(instr(s.instructorId)?.name||"No instructor")} · ${slotsTaken(s)}/${S.settings.capacity} pax${slotsTaken(s)>=+S.settings.capacity?" · FULLY BOOKED":""}${pendTag(s)}</span></div></li>`
+      ? `<li><div class="row between"><span><b>${fmtTime(s.time)}</b> · ${esc(typeName(s))}</span><span class="muted small">${esc(instr(s.instructorId)?.name||"No instructor")} · ${slotsTaken(s)}/${capOf(s)} pax${slotsTaken(s)>=capOf(s)?" · FULLY BOOKED":""}${pendTag(s)}</span></div></li>`
       : `<li><div class="row between"><span><b>${fmtTime(s.time)}</b> · Rental</span><span class="muted small">${esc(s.renter)} · ${(+s.hours||0)+(+s.extHours||0)} hrs</span></div></li>`; }).join("")}</ul>`).join("")
     + (upLater?`<p class="small muted" style="margin:10px 0 0">${upLater} more on later days. See the Classes tab.</p>`:"")
     :`<p class="empty">Nothing scheduled yet.</p>`}
@@ -1857,7 +1858,7 @@ function vSessionList(viewSeg){
     const nm=(s.attendees||[]).filter(a=>a.kind==="nonmember").length;
     return `<div class="card">
       <div class="row between"><div><h3>${fmtDate(s.date)} · ${fmtTime(s.time)}</h3><p class="small muted" style="margin:2px 0 0"><span class="pill pink">${esc(typeName(s))}</span> · ${ins?`<button class="linkbtn" data-act="openInstr" data-id="${ins.id}">${esc(ins.name)}</button>`:"No instructor"}</p></div>
-      <span class="pill ${slotsTaken(s)>=+S.settings.capacity?"bad":""}">${slotsTaken(s)}/${S.settings.capacity} pax${slotsTaken(s)>=+S.settings.capacity?" · Fully booked":""}${pendTag(s)}</span></div>
+      <span class="pill ${slotsTaken(s)>=capOf(s)?"bad":""}">${slotsTaken(s)}/${capOf(s)} pax${slotsTaken(s)>=capOf(s)?" · Fully booked":""}${pendTag(s)}</span></div>
       <p class="small" style="margin:10px 0 2px">Sales <b class="money">${peso(c.gross)}</b> · ${n-nm} members, ${nm} non-members${c.usedMin?` · <span class="muted">minimum pay applied</span>`:""}${c.note?` · <span class="muted">${c.note}</span>`:""}${c.absent?` · <span class="pill bad">Instructor absent</span>`:""}</p>
       ${splitBar(c.inst,c.biz,c.pct,c)}
       ${(()=>{ const e=expectedCalc(s); return e.pending?`<p class="small" style="margin:8px 0 0"><span class="muted">Expected with ${e.pending} paid booking${e.pending===1?"":"s"}:</span> Sales <b class="money">${peso(e.gross)}</b> · Instructor ${peso(e.inst)} · Studio ${peso(e.biz)}</p>`:""; })()}
@@ -1880,7 +1881,7 @@ function vWeek(){
     const full = new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long",month:"long",day:"numeric"});
     return `<div class="wkday${d===today?" today":""}"><div class="wkh"><span class="dw${i===0||i===6?" we":""}">${dw}</span><span class="dn">${shortD(d)}</span></div>
       ${items.map(s=>{ const ins=instr(s.instructorId), n=slotsTaken(s);
-        return `<button type="button" class="wkc" data-act="editSession" data-id="${s.id}"><span class="tm">${fmtTime(s.time)||"No time"}</span><b>${esc(typeName(s))}</b><span class="sub">${ins?esc(ins.name)+" · ":""}${n}/${cap} pax${n>=cap?" · FULL":""}${pendTag(s)}</span></button>`; }).join("")}
+        return `<button type="button" class="wkc" data-act="editSession" data-id="${s.id}"><span class="tm">${fmtTime(s.time)||"No time"}</span><b>${esc(typeName(s))}</b><span class="sub">${ins?esc(ins.name)+" · ":""}${n}/${capOf(s)} pax${n>=capOf(s)?" · FULLY BOOKED":""}${pendTag(s)}</span></button>`; }).join("")}
       ${items.length?"":`<p class="small muted" style="margin:0">No class</p>`}
       <button type="button" class="btn sm ghost wkadd" data-act="calAdd" data-date="${d}" aria-label="Add class on ${esc(full)}">+ Add class</button></div>`;
   }).join("");
@@ -2658,7 +2659,7 @@ function sessionDlg(s, preset){
   const pi = preset && preset.instructorId ? instr(preset.instructorId) : null;
   s = s ? structuredClone(s) : {id:uid(), date:(preset&&preset.date)||todayISO(), time:"18:00", typeId:(pi&&pi.types&&pi.types[0])||S.settings.classTypes[0]?.id||"", title:"", instructorId:(pi&&pi.id)||S.settings.instructors[0]?.id||"", attendees:[], paidOut:false, instStatus:"present", pctOverride:""};
   const newNon = [];
-  const drawSum = ()=>{ const c=sessionCalc(s), e=expectedCalc(s); document.getElementById("s_sum").innerHTML = (e.pending?`<p class="small" style="margin:10px 0 0"><b>Expected with paid bookings</b> · ${slotsTaken(s)}/${S.settings.capacity} pax · Sales <b>${peso(e.gross)}</b></p>${splitBar(e.inst,e.biz,e.pct,e)}<p class="small muted" style="margin:10px 0 0">Actual (checked in only)</p>`:"") + `<p class="small" style="margin:10px 0 0">${slotsTaken(s)}/${S.settings.capacity} pax (${s.attendees.length} checked in) · Sales <b>${peso(c.gross)}</b></p>${splitBar(c.inst,c.biz,c.pct,c)}`; };
+  const drawSum = ()=>{ const c=sessionCalc(s), e=expectedCalc(s); document.getElementById("s_sum").innerHTML = (e.pending?`<p class="small" style="margin:10px 0 0"><b>Expected with paid bookings</b> · ${slotsTaken(s)}/${capOf(s)} pax · Sales <b>${peso(e.gross)}</b></p>${splitBar(e.inst,e.biz,e.pct,e)}<p class="small muted" style="margin:10px 0 0">Actual (checked in only)</p>`:"") + `<p class="small" style="margin:10px 0 0">${slotsTaken(s)}/${capOf(s)} pax (${s.attendees.length} checked in) · Sales <b>${peso(c.gross)}</b></p>${splitBar(c.inst,c.biz,c.pct,c)}`; };
   const drawAtt = ()=>{
     const box=document.getElementById("s_att");
     box.innerHTML = s.attendees.length ? s.attendees.map((a,i)=>`<div class="att"><span class="nm">${esc(member(a.memberId)?.name||newNon.find(n=>n.id===a.memberId)?.name||a.name)} <span class="pill ${a.kind==="nonmember"?"":"pink"}">${a.kind==="nonmember"?"non-member":"member"}</span>${a.pkg?` <span class="pill ok">package</span>`:""}</span><input type="number" min="0" aria-label="Amount paid" data-i="${i}" value="${a.amount}"><button type="button" class="x" data-rm="${i}" aria-label="Remove">✕</button></div>`).join("") : `<p class="small muted">No one checked in yet.</p>`;
@@ -2673,6 +2674,7 @@ function sessionDlg(s, preset){
     <div class="grid2">
       <label class="f">Date<input type="date" id="s_date" value="${s.date}"></label>
       <label class="f">Time<input type="time" id="s_time" value="${s.time}"></label>
+      <label class="f">Max pax (this class only)<input type="number" min="1" id="s_cap" value="${s.capacity||""}" placeholder="Default: ${+S.settings.capacity||9}"></label>
       <label class="f">Class type<select id="s_type">${typeOptions(s.typeId,"—")}</select></label>
       <label class="f">Instructor<select id="s_instr"><option value="">—</option>${S.settings.instructors.map(i=>`<option value="${i.id}" ${i.id===s.instructorId?"selected":""}>${esc(i.name)}</option>`).join("")}</select></label>
       <label class="f" id="s_pctwrap" ${instRate(s).mode!=="pct"?'style="display:none"':""}>Instructor % for this class<input type="number" min="0" max="100" id="s_pct" placeholder="Default ${pct}%" value="${s.pctOverride}"></label>
@@ -2684,7 +2686,7 @@ function sessionDlg(s, preset){
     <div class="row" style="margin-bottom:8px">${sel("s_addn","Add a non-member…",S.members.filter(m=>m.type==="nonmember").sort(byName).map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join(""))}<button type="button" class="btn sm ghost" id="s_walk">New walk-in</button></div>
     <div id="s_att"></div><div id="s_sum"></div>`,
   { onSave:()=>{
-      s.date=val("s_date"); s.time=val("s_time"); s.typeId=val("s_type"); s.instructorId=val("s_instr"); s.instStatus=val("s_status");
+      s.date=val("s_date"); s.time=val("s_time"); { const c=+val("s_cap"); if(c>0) s.capacity=Math.round(c); else delete s.capacity; } s.typeId=val("s_type"); s.instructorId=val("s_instr"); s.instStatus=val("s_status");
       const p=val("s_pct"); s.pctOverride = p===""?"":Math.max(0,Math.min(100,+p));
       if(!s.date){ toast("Pick a date"); return false; }
       newNon.filter(n=>s.attendees.some(a=>a.memberId===n.id)).forEach(n=>S.members.push(n));
@@ -2694,7 +2696,7 @@ function sessionDlg(s, preset){
     onDelete: isNew?null:()=>{ S.sessions=S.sessions.filter(x=>x.id!==s.id); } });
   const add = (m, kind) => {
     if(s.attendees.some(a=>a.memberId===m.id)){ toast("Already checked in"); return; }
-    if(!bkFor(s.id).some(b=>b.member_id===m.id) && slotsTaken(s)>=+S.settings.capacity) toast("Class is fully booked (max "+S.settings.capacity+" pax).");
+    if(!bkFor(s.id).some(b=>b.member_id===m.id) && slotsTaken(s)>=capOf(s)) toast("Class is fully booked (max "+capOf(s)+" pax).");
     s.typeId = val("s_type"); s.date = val("s_date") || s.date;
     const pr = priceFor(m, s, kind);
     s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind, amount:Math.round(pr.amount*100)/100}, pr.pkg?{pkg:true}:{})); drawAtt();
@@ -2746,7 +2748,7 @@ function scanDlg(preId){
   };
   const drawList = () => {
     const s = cur(), at = (s && s.attendees) || [];
-    document.getElementById("sc_cnt").textContent = `Checked in (${at.length}/${S.settings.capacity})`;
+    document.getElementById("sc_cnt").textContent = `Checked in (${at.length}/${capOf(s)})`;
     document.getElementById("sc_list").innerHTML = at.length ? `<ul class="list">${at.slice().reverse().map(a=>{ const m=member(a.memberId);
       return `<li style="padding:8px 0"><div class="row between"><span>${esc((m&&m.name)||a.name)} <span class="pill ${a.kind==="nonmember"?"":"pink"}">${a.kind==="nonmember"?"non-member":esc((m&&m.memberNo)||"member")}</span></span><span class="small muted">${a.at?fmtClock(a.at):""}</span></div></li>`; }).join("")}</ul>`
       : `<p class="small muted" style="margin:0">No one yet. Point the camera at a member card.</p>`;
@@ -2770,7 +2772,7 @@ function scanDlg(preId){
         text:(m.validUntil ? `Expired ${fmtDate(m.validUntil)}. ` : "")+"Not checked in.", via, btn:"non", btnLabel:`Check in as non-member (${peso(rate("nonMember"))})`});
       return;
     }
-    const over = slotsTaken(s) > +S.settings.capacity;
+    const over = slotsTaken(s) > capOf(s);
     const pr = priceFor(m, s, active?"member":"nonmember");
     const amount = Math.round(pr.amount*100)/100;
     s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind:active?"member":"nonmember", amount, via, at:new Date().toISOString()}, pr.pkg?{pkg:true}:{}));
