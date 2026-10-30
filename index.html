@@ -754,7 +754,7 @@ async function loadBookings(){
   if(!sb || !sbUser) return;
   try{
     const since = new Date(Date.now()-36*3600*1000).toISOString();
-    const r = await sb.from("fw_bookings").select("id,ref,class_id,class_name,starts_at,name,member_no,member_id,contact,email,note,is_member,status,pay_ref,proof_path,created_at")
+    const r = await sb.from("fw_bookings").select("id,ref,class_id,class_name,starts_at,name,member_no,member_id,contact,email,note,is_member,status,pay_ref,proof_path,created_at,paid_at,confirmed_at")
       .gte("starts_at", since).in("status",["pending","confirmed"]).order("starts_at");
     if(r.error) return;
     const before = JSON.stringify(BK); BK = r.data||[];
@@ -767,12 +767,33 @@ const pendTag = s => { const n=bkPend(s); return n?` · ${n} to confirm`:""; };
 const capOf = s => +(s&&s.capacity) || +S.settings.capacity || 9;
 const slotsTaken = s => { const bk=bkFor(s.id).filter(b=>b.status==="confirmed"), ids=new Set(bk.map(b=>b.member_id).filter(Boolean)); return bk.length + (s.attendees||[]).filter(a=>!ids.has(a.memberId)).length; };
 const bkWhen = b => { const d=new Date(b.starts_at); return d.toLocaleDateString("en-PH",{weekday:"short",month:"short",day:"numeric"})+" · "+d.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}); };
+const bkPayAt = b => b.paid_at || b.confirmed_at || null;
+const bkStamp = iso => { const d=new Date(iso); return d.toLocaleDateString("en-PH",{month:"short",day:"numeric"})+", "+d.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}); };
+function payOrderCard(){
+  const ids = [...new Set(BK.map(b=>b.class_id))];
+  if(!ids.length) return "";
+  const blocks = ids.map(id=>{
+    const list = BK.filter(b=>b.class_id===id), s = (S.sessions||[]).find(x=>x.id===id), cap = capOf(s), f = list[0];
+    const paid = list.filter(bkPayAt).sort((a,b)=>new Date(bkPayAt(a))-new Date(bkPayAt(b)));
+    const unpaid = list.filter(b=>!bkPayAt(b)).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+    const over = paid.length > cap;
+    const li = (b,i) => { const late = i>=cap; return `<li style="padding:6px 0${late?";background:rgba(255,60,60,.08)":""}"><div class="row between"><span><b>#${i+1}</b> ${esc(b.name)} ${b.is_member?`<span class="pill pink">${esc(b.member_no||"")}</span>`:`<span class="pill">Guest</span>`}</span><span class="pill ${late?"bad":b.status==="confirmed"?"ok":"warn"}">${late?"Over limit":b.status==="confirmed"?"Confirmed":"Proof to check"}</span></div>
+      <div class="small muted">Paid ${esc(bkStamp(bkPayAt(b)))}${b.paid_at?"":" (time you confirmed)"} · Booked ${esc(bkStamp(b.created_at))} · Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}</div></li>`; };
+    return `<details style="margin-top:8px"${over?" open":""}><summary class="small"><b>${esc(f.class_name||"Class")} · ${esc(bkWhen(f))}</b> · ${paid.length}/${cap} paid${over?` <span class="pill bad">${paid.length-cap} over limit</span>`:paid.length>=cap?` <span class="pill bad">Fully booked</span>`:""}</summary>
+      <ul class="list">${paid.map(li).join("")||`<li class="small muted">No payments yet.</li>`}</ul>
+      ${unpaid.length?`<p class="small muted" style="margin:6px 0 2px">No payment yet (${unpaid.length}): ${unpaid.map(b=>esc(b.name)+" · booked "+esc(bkStamp(b.created_at))).join("; ")}</p>`:""}</details>`;
+  });
+  return `<div class="card"><h3 style="margin:0">Who paid first</h3>
+    <p class="small muted" style="margin:6px 0 4px">Ranked by the time each student uploaded proof or entered a payment ref. If there's no upload, it uses the time you confirmed. Anyone past the class limit is marked <b>Over limit</b>. The earlier payer keeps the slot.</p>
+    ${blocks.join("")}</div>`;
+}
 function bookingsCard(){
   if(!sbUser) return "";
-  const pend = BK.filter(b=>b.status==="pending"), conf = BK.filter(b=>b.status==="confirmed");
+  const byPay = (a,b)=> (bkPayAt(a)?0:1)-(bkPayAt(b)?0:1) || new Date(bkPayAt(a)||a.created_at)-new Date(bkPayAt(b)||b.created_at);
+  const pend = BK.filter(b=>b.status==="pending").sort(byPay), conf = BK.filter(b=>b.status==="confirmed");
   const row = b => `<li><div class="row between"><div style="min-width:0"><b>${esc(b.name)}</b> ${b.is_member?`<span class="pill pink">${esc(b.member_no||"")}</span>`:`<span class="pill">Guest</span><div class="small muted">${esc(b.contact||"")}${b.note?" · "+esc(String(b.note).replace(/^FB:\s*/,"FB: ")):""}</div>`}
      <div class="small">${esc(b.class_name||"Class")} · ${esc(bkWhen(b))}</div>
-     <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${b.proof_path?"":" · No screenshot yet"}</div>${b.status==="pending"?`<div class="small muted">${bkEmailOf(b)?"Email: "+esc(bkEmailOf(b)):"No email on file"}${bkRemAt(b)?` · <b>Reminder sent ${esc(bkRemAt(b))}</b>`:""}</div>`:""}</div>
+     <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${b.proof_path?"":" · No screenshot yet"}${b.paid_at?` · <b>Paid ${esc(bkStamp(b.paid_at))}</b>`:""}</div>${b.status==="pending"?`<div class="small muted">${bkEmailOf(b)?"Email: "+esc(bkEmailOf(b)):"No email on file"}${bkRemAt(b)?` · <b>Reminder sent ${esc(bkRemAt(b))}</b>`:""}</div>`:""}</div>
      <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Confirmed":"Waiting for payment"}</span></div>
      <div class="row" style="margin-top:8px">${b.proof_path?`<button type="button" class="btn sm ghost" data-act="bkProof" data-id="${b.id}">View proof</button>`:""}
      ${b.status==="pending"?`<button type="button" class="btn sm" data-act="bkConfirm" data-id="${b.id}">Paid · Confirm</button>${bkEmailOf(b)?`<button type="button" class="btn sm ghost" data-act="bkRemind" data-id="${b.id}">Email payment reminder</button>`:""}<button type="button" class="btn sm ghost" data-act="bkRemindCopy" data-id="${b.id}">Copy reminder</button>`:`<button type="button" class="btn sm ghost" data-act="bkMsg" data-id="${b.id}">Copy message</button><button type="button" class="btn sm ghost" data-act="bkResend" data-id="${b.id}">${bkEmailOf(b)?"Resend email":"No email"}</button><button type="button" class="btn sm ghost" data-act="bkUnconfirm" data-id="${b.id}">Undo confirm</button>`}
@@ -1844,14 +1865,14 @@ function statusToggles(s){
 function vSessions(){
   if(!classView) classView = lsGet("fw-cview") || "week";
   const viewSeg = `<div class="seg" role="group" aria-label="Classes view"><button type="button" data-cview="week" aria-pressed="${classView==="week"}">Week calendar</button><button type="button" data-cview="list" aria-pressed="${classView==="list"}">List and pay</button></div>`;
-  if(classView==="week") return `<div class="row between" style="margin-bottom:12px"><h2>Classes</h2><div class="row"><button class="btn lime" data-act="scan">Scan card</button><button class="btn" data-act="newSession">Add class</button></div></div>${bookingsCard()}${viewSeg}${vWeek()}`;
+  if(classView==="week") return `<div class="row between" style="margin-bottom:12px"><h2>Classes</h2><div class="row"><button class="btn lime" data-act="scan">Scan card</button><button class="btn" data-act="newSession">Add class</button></div></div>${bookingsCard()}${sbUser?payOrderCard():""}${viewSeg}${vWeek()}`;
   return vSessionList(viewSeg);
 }
 function vSessionList(viewSeg){
   const r=periodRange();
   const list = S.sessions.filter(s=>inR(s.date,r) && (!classTypeFilter || s.typeId===classTypeFilter)).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   return `<div class="row between" style="margin-bottom:12px"><h2>Classes</h2><div class="row"><button class="btn lime" data-act="scan">Scan card</button><button class="btn" data-act="newSession">Add class</button></div></div>
-  ${bookingsCard()}${viewSeg}${periodBar()}
+  ${bookingsCard()}${sbUser?payOrderCard():""}${viewSeg}${periodBar()}
   <div class="row" style="margin-bottom:12px"><label class="small muted" for="ctf">Class type</label><select id="ctf" class="sel">${typeOptions(classTypeFilter,"All classes")}</select></div>
   ${list.length?list.map(s=>{
     const c=sessionCalc(s), n=(s.attendees||[]).length, ins=instr(s.instructorId);
