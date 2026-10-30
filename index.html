@@ -411,7 +411,7 @@ const DEFAULT_TYPES = [{id:"ct_zumba",name:"Zumba"},{id:"ct_hiphop",name:"Hip Ho
 
 const DEFAULT = {
   settings:{
-    studioName:"Footwork PH", instructorPct:40, minPerClass:0, capacity:10, merchDiscPct:10, remindDays:3,
+    studioName:"Footwork PH", instructorPct:40, minPerClass:0, capacity:9, merchDiscPct:10, remindDays:3,
     rates:{ nonMember:{reg:0,promo:""}, member:{reg:0,promo:""}, membershipFee:{reg:0,promo:""} },
     rental:{ hour:400, extHour:300 },
     promo:{active:false, ends:""},
@@ -469,6 +469,7 @@ function normalize(d){
   if(!st.categories.includes("Merchandise")) st.categories.splice(Math.max(0,st.categories.length-1),0,"Merchandise");
   st.plans = (st.plans||[]).map(p=>Object.assign({promoPrice:"", for:"member", typeIds:[]},p));
   if(!st.ratesV2) seedRatesV2(st);
+  if(!st.cap9){ st.capacity = 9; st.cap9 = true; }
   st.instructors = (st.instructors||[]).map(i=>Object.assign({pct:"",min:"",contact:"",notes:"",types:[]},i));
   st.mail = Object.assign({url:"", key:"", sent:{}}, ds.mail||{}); if(!st.mail.sent || typeof st.mail.sent!=="object") st.mail.sent = {};
   o.settings = st;
@@ -1171,7 +1172,7 @@ function instrPages(d){
     fwdSec(++n,"CLASS STANDARDS AND SAFETY",k++,[],[
       "Every class includes a proper warm-up and cool-down.",
       "The Instructor gives easier options for beginners and students with health limits.",
-      `Classes follow the Studio limit of <b>${+S.settings.capacity||10} students</b> per class.`,
+      `Classes follow the Studio limit of <b>${+S.settings.capacity||9} students</b> per class.`,
       "If a student gets hurt or feels unwell, the Instructor stops the activity, gives first aid if able, and tells the Studio right away.",
       "The Instructor takes care of Studio equipment and reports any damage."])];
   const S2 = [];
@@ -1827,7 +1828,7 @@ function vDash(){
   <div class="card"><div class="row between" style="margin-bottom:6px"><h3>Coming up</h3><button class="btn sm" data-act="newSession">Add class</button></div>
   ${upWeek.length?upDays.map(d=>`<h3 style="margin:14px 0 4px">${fmtDate(d)} <span class="muted small" style="font-weight:400">· ${new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long"})} · ${upWeek.filter(o=>o.d===d).length} scheduled</span></h3>
     <ul class="list">${upWeek.filter(o=>o.d===d).map(o=>{ const s=o.x; return o.k==="s"
-      ? `<li><div class="row between"><span><b>${fmtTime(s.time)}</b> · ${esc(typeName(s))}</span><span class="muted small">${esc(instr(s.instructorId)?.name||"No instructor")} · ${slotsTaken(s)}/${S.settings.capacity} pax${slotsTaken(s)>=+S.settings.capacity?" · FULL":""}${pendTag(s)}</span></div></li>`
+      ? `<li><div class="row between"><span><b>${fmtTime(s.time)}</b> · ${esc(typeName(s))}</span><span class="muted small">${esc(instr(s.instructorId)?.name||"No instructor")} · ${slotsTaken(s)}/${S.settings.capacity} pax${slotsTaken(s)>=+S.settings.capacity?" · FULLY BOOKED":""}${pendTag(s)}</span></div></li>`
       : `<li><div class="row between"><span><b>${fmtTime(s.time)}</b> · Rental</span><span class="muted small">${esc(s.renter)} · ${(+s.hours||0)+(+s.extHours||0)} hrs</span></div></li>`; }).join("")}</ul>`).join("")
     + (upLater?`<p class="small muted" style="margin:10px 0 0">${upLater} more on later days. See the Classes tab.</p>`:"")
     :`<p class="empty">Nothing scheduled yet.</p>`}
@@ -1856,7 +1857,7 @@ function vSessionList(viewSeg){
     const nm=(s.attendees||[]).filter(a=>a.kind==="nonmember").length;
     return `<div class="card">
       <div class="row between"><div><h3>${fmtDate(s.date)} · ${fmtTime(s.time)}</h3><p class="small muted" style="margin:2px 0 0"><span class="pill pink">${esc(typeName(s))}</span> · ${ins?`<button class="linkbtn" data-act="openInstr" data-id="${ins.id}">${esc(ins.name)}</button>`:"No instructor"}</p></div>
-      <span class="pill ${slotsTaken(s)>=+S.settings.capacity?"bad":""}">${slotsTaken(s)}/${S.settings.capacity} pax${slotsTaken(s)>=+S.settings.capacity?" · Full":""}${pendTag(s)}</span></div>
+      <span class="pill ${slotsTaken(s)>=+S.settings.capacity?"bad":""}">${slotsTaken(s)}/${S.settings.capacity} pax${slotsTaken(s)>=+S.settings.capacity?" · Fully booked":""}${pendTag(s)}</span></div>
       <p class="small" style="margin:10px 0 2px">Sales <b class="money">${peso(c.gross)}</b> · ${n-nm} members, ${nm} non-members${c.usedMin?` · <span class="muted">minimum pay applied</span>`:""}${c.note?` · <span class="muted">${c.note}</span>`:""}${c.absent?` · <span class="pill bad">Instructor absent</span>`:""}</p>
       ${splitBar(c.inst,c.biz,c.pct,c)}
       ${(()=>{ const e=expectedCalc(s); return e.pending?`<p class="small" style="margin:8px 0 0"><span class="muted">Expected with ${e.pending} paid booking${e.pending===1?"":"s"}:</span> Sales <b class="money">${peso(e.gross)}</b> · Instructor ${peso(e.inst)} · Studio ${peso(e.biz)}</p>`:""; })()}
@@ -1872,7 +1873,7 @@ const weekSessions = ws => { const we=addDays(ws,6); return S.sessions.filter(s=
 const weekLabel = ws => { const we=addDays(ws,6); return `${shortD(ws)} – ${shortD(we)}, ${we.slice(0,4)}`; };
 const fmtStamp = iso => { const d=new Date(iso); return isNaN(d) ? "" : d.toLocaleString("en-PH",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); };
 function vWeek(){
-  const ws=curWeek(), list=weekSessions(ws), today=todayISO(), cap=+S.settings.capacity||10;
+  const ws=curWeek(), list=weekSessions(ws), today=todayISO(), cap=+S.settings.capacity||9;
   const sent = S.settings.mail.sent[ws];
   const days = DOW.map((dw,i)=>{
     const d=addDays(ws,i), items=list.filter(s=>s.date===d);
@@ -1910,13 +1911,13 @@ function schedDays(ws){
 }
 const longDay = d => new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long",month:"short",day:"numeric"}).toUpperCase();
 function schedText(ws){
-  const cap=+S.settings.capacity||10;
+  const cap=+S.settings.capacity||9;
   return `FOOTWORK PH · CLASS SCHEDULE\n${weekLabel(ws)}\n\n` +
     schedDays(ws).map(x=>longDay(x.d)+"\n"+x.items.map(s=>{ const i=instr(s.instructorId); return `• ${fmtTime(s.time)} – ${typeName(s)}${i?" ("+i.name+")":""}`; }).join("\n")).join("\n\n") +
     `\n\n📲 BOOK YOUR SLOT HERE:\n${BOOK_URL}\n\nHOW TO BOOK:\n1. Open the link above.\n2. Log in with your Member ID (on your card, e.g. FW-001) and your registered mobile number.\n3. Tap "Book" on the class you want, then "Confirm booking".\n4. Pay via GCash/Maya and upload your payment screenshot to confirm your slot.\n\nBook in advance before going to the studio. Max ${cap} per class.\nClass times subject to change.`;
 }
 function schedHtml(ws, note){
-  const cap=+S.settings.capacity||10, F="font-family:Arial,Helvetica,sans-serif;";
+  const cap=+S.settings.capacity||9, F="font-family:Arial,Helvetica,sans-serif;";
   const rows = schedDays(ws).map(x=>`<tr><td colspan="3" style="${F}padding:16px 16px 6px;font-size:14px;font-weight:800;color:#E8157F;letter-spacing:.5px">${esc(longDay(x.d))}</td></tr>`+
     x.items.map(s=>{ const i=instr(s.instructorId); return `<tr><td style="${F}padding:5px 8px 5px 16px;width:84px;font-size:14px;font-weight:700;color:#111;white-space:nowrap;vertical-align:top">${esc(fmtTime(s.time))}</td><td style="${F}padding:5px 8px;font-size:14px;font-weight:700;color:#111;vertical-align:top">${esc(typeName(s))}</td><td style="${F}padding:5px 16px 5px 8px;font-size:13px;color:#555;vertical-align:top">${i?esc(i.name):""}</td></tr>`; }).join("")).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;padding:0;background:#f3f0f5">
@@ -2027,7 +2028,7 @@ ${h3("HOW TO BOOK YOUR SLOT")}
 3. Type your full name, mobile number and Facebook name. Tick <b>I agree</b>, then tap <b>Reserve my slot</b>.<br>
 4. Pay your class fee via <b>${PAY_LINE}</b>. Free classes need no payment.<br>
 5. Screenshot your booking and your payment receipt. Send both to our Facebook page <b>Footwork PH</b>.<br>
-6. Your slot is confirmed once we verify your payment. Max 10 per class, so book early!</td></tr>
+6. Your slot is confirmed once we verify your payment. Max ${+S.settings.capacity||9} per class, so book early!</td></tr>
 ${h3("REGULAR RATES PER SESSION"+(d.promo&&d.promo.ends?` <span style="font-size:12px;color:#777;font-weight:700">(after the promo)</span>`:""))}
 <tr><td style="padding:0 20px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${th("CLASS")}${th("NON-MEMBER")}${th("MEMBER")}</tr>
 ${d.rates.map(r=>`<tr>${td(`<b>${esc(r.name)}</b>`)}${td(peso(r.non))}${td(`<b style="color:${G}">${peso(r.mem)}</b>`)}</tr>`).join("")}</table></td></tr>
@@ -2079,7 +2080,7 @@ ${h3("HOW TO BOOK YOUR SLOT")}
 2. Log in with your <b>Member ID</b> (on your card) and the <b>mobile number</b> you registered with.<br>
 3. Find your class and tap <b>Book</b>.<br>
 4. Pay your class fee via <b>${PAY_LINE}</b>, then upload your proof of payment on the booking page. Free classes need no payment.<br>
-5. Your slot is confirmed once we verify your payment. Max 10 per class, so book early!<br>
+5. Your slot is confirmed once we verify your payment. Max ${+S.settings.capacity||9} per class, so book early!<br>
 6. Bring your member card to the studio so we can record your points.</td></tr>
 ${h3("YOUR MEMBER RATES PER SESSION")}
 <tr><td style="padding:0 20px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${th("CLASS")}${th("MEMBER")}${th("NON-MEMBER")}</tr>
@@ -2693,7 +2694,7 @@ function sessionDlg(s, preset){
     onDelete: isNew?null:()=>{ S.sessions=S.sessions.filter(x=>x.id!==s.id); } });
   const add = (m, kind) => {
     if(s.attendees.some(a=>a.memberId===m.id)){ toast("Already checked in"); return; }
-    if(!bkFor(s.id).some(b=>b.member_id===m.id) && slotsTaken(s)>=+S.settings.capacity) toast("Class is full. Check capacity.");
+    if(!bkFor(s.id).some(b=>b.member_id===m.id) && slotsTaken(s)>=+S.settings.capacity) toast("Class is fully booked (max "+S.settings.capacity+" pax).");
     s.typeId = val("s_type"); s.date = val("s_date") || s.date;
     const pr = priceFor(m, s, kind);
     s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind, amount:Math.round(pr.amount*100)/100}, pr.pkg?{pkg:true}:{})); drawAtt();

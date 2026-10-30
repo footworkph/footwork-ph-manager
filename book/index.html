@@ -280,7 +280,7 @@ function card(s){
       <div class="row"><div class="cn">${esc(s.class)}${s.free?` <span class="pill lime">FREE</span>`:""}</div>${btn}</div>
       ${s.coach?`<div class="co">with ${esc(s.coach)}</div>`:""}
       <div class="bar"><i style="width:${pct}%"></i></div>
-      <div class="small ${left<=2&&left>0?"":"muted"}" style="${left<=2&&left>0?"color:var(--warn);font-weight:700":""}">${left>0?`${left} of ${s.capacity} slots left`:`<b style="color:var(--bad)">Full slot (${s.capacity}/${s.capacity}) · Booking closed</b>`}</div>
+      <div class="small ${left<=2&&left>0?"":"muted"}" style="${left<=2&&left>0?"color:var(--warn);font-weight:700":""}">${left>0?`${left} of ${s.capacity} slots left`:`<b style="color:var(--bad)">Fully booked (${s.capacity}/${s.capacity}) · Booking closed</b>`}</div>
     </div></div>`;
 }
 
@@ -474,7 +474,7 @@ function gCard(s){
       <div class="row"><div class="cn">${esc(s.class)}${s.free?` <span class="pill lime">FREE</span>`:""}</div>${btn}</div>
       ${s.coach?`<div class="co">with ${esc(s.coach)}</div>`:""}
       <div class="bar"><i style="width:${pct}%"></i></div>
-      <div class="small muted">${left>0?`${left} of ${s.capacity} slots left`:`<b style="color:var(--bad)">Full slot (${s.capacity}/${s.capacity}) · Booking closed</b>`}${s.guest_soon&&left>0?` · Guest booking opens ${esc(opens)}`:""}</div>
+      <div class="small muted">${left>0?`${left} of ${s.capacity} slots left`:`<b style="color:var(--bad)">Fully booked (${s.capacity}/${s.capacity}) · Booking closed</b>`}${s.guest_soon&&left>0?` · Guest booking opens ${esc(opens)}`:""}</div>
     </div></div>`;
 }
 function gBookSheet(s){
