@@ -825,7 +825,7 @@ async function bkSet(id, patch, msg){
 }
 /* ---------- move / rebook a booking to another class ---------- */
 const sesStartISO = s => new Date(`${s.date}T${(s.time||"00:00").slice(0,5)}:00+08:00`).toISOString();
-function bkMoveDlg(id){
+function bkMoveDlg(id, back){
   const b = BK.find(x=>x.id===id); if(!b) return;
   const now = Date.now();
   const opts = (S.sessions||[]).filter(s=>s.id!==b.class_id && s.date && new Date(sesStartISO(s)).getTime()>now)
@@ -834,12 +834,13 @@ function bkMoveDlg(id){
   const label = s => { const left = capOf(s)-slotsTaken(s), i=instr(s.instructorId);
     return `${new Date(s.date+"T00:00").toLocaleDateString("en-PH",{weekday:"short",month:"short",day:"numeric"})} · ${fmtTime(s.time)} · ${typeName(s)}${i?" · "+i.name:""} — ${left>0?left+" slot"+(left===1?"":"s")+" left":"FULL"}`; };
   const sameType = (S.sessions||[]).find(x=>x.id===b.class_id);
-  openDlg("Move / Rebook booking", `
+  openDlg(back?"Edit booking":"Move / Rebook booking", `
     <p class="small" style="margin:0 0 10px"><b>${esc(b.name)}</b> · Ref ${esc(b.ref)}<br><span class="muted">Now: ${esc(b.class_name||"Class")} · ${esc(bkWhen(b))}</span></p>
     <label class="f">Move to class<select id="mv_ses">${opts.map(s=>{ const full=capOf(s)-slotsTaken(s)<=0;
       return `<option value="${s.id}" ${full?"disabled":""}>${esc(label(s))}</option>`; }).join("")}</select></label>
     <label class="row" style="gap:8px;margin-top:10px"><input type="checkbox" id="mv_mail" ${b.status==="confirmed"&&bkEmailOf(b)?"checked":""} ${bkEmailOf(b)?"":"disabled"}> <span class="small">Email the new schedule to the student${bkEmailOf(b)?"":" (no email on file)"}</span></label>
-    <p class="small muted" style="margin:10px 0 0">Payment and status stay the same. The old slot opens up for others. Full classes can't be picked.</p>`,
+    <p class="small muted" style="margin:10px 0 0">Payment and status stay the same${b.status==="confirmed"?" (stays Paid)":""}. The old slot opens up for others. Full classes can't be picked.</p>
+    <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px"><button type="button" class="btn sm danger" id="mv_cancel">Cancel this booking</button></div>`,
   { saveLabel:"Move booking", onSave:()=>{
       const sid=document.getElementById("mv_ses").value, s=(S.sessions||[]).find(x=>x.id===sid), mail=document.getElementById("mv_mail").checked;
       if(!s){ toast("Pick a class"); return false; }
@@ -851,10 +852,14 @@ function bkMoveDlg(id){
         dlg.close();
         let msg = "Moved to "+typeName(s)+" · "+bkWhen(Object.assign({},b,patch));
         if(mail){ const res = await bkSendConf(Object.assign({}, b, patch)); msg += res==="sent" ? " · email sent" : " · email failed, use Copy message"; }
-        toast(msg); await loadBookings(); render();
+        toast(msg); await loadBookings(); render(); if(back) back();
       });
       return false;
     } });
+  document.getElementById("mv_cancel").onclick = async ()=>{
+    if(!confirm(`Cancel ${b.name}'s booking for ${b.class_name||"class"} · ${bkWhen(b)}? The slot opens up for others.`)) return;
+    dlg.close(); await bkSet(b.id,{status:"cancelled",cancelled_by:"studio"},"Booking cancelled"); if(back) back();
+  };
   if(sameType){ const sel=document.getElementById("mv_ses"), first=[...sel.options].find(o=>!o.disabled && ((S.sessions||[]).find(x=>x.id===o.value)||{}).typeId===sameType.typeId); if(first) sel.value=first.value; }
 }
 /* ---------- booking confirmation (email + copyable message) ---------- */
@@ -2802,7 +2807,7 @@ function sessionDlg(s, preset){
       <label class="f" id="s_pctwrap" ${instRate(s).mode!=="pct"?'style="display:none"':""}>Instructor % for this class<input type="number" min="0" max="100" id="s_pct" placeholder="Default ${pct}%" value="${s.pctOverride}"></label>
       <label class="f">Instructor attendance<select id="s_status"><option value="present" ${s.instStatus!=="absent"?"selected":""}>Present</option><option value="absent" ${s.instStatus==="absent"?"selected":""}>Absent</option></select></label>
     </div>
-    ${bkFor(s.id).length?`<h3 style="margin:8px 0 6px">Booked online (${bkFor(s.id).length})</h3><div id="s_bk" style="margin-bottom:10px">${bkFor(s.id).map(b=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span><b>${esc(b.name)}</b> <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Paid":"Not paid yet"}</span></span><button type="button" class="btn sm ghost" data-bkadd="${esc(b.member_id||"")}">Check in</button></div>`).join("")}</div>`:""}
+    ${bkFor(s.id).length?`<h3 style="margin:8px 0 6px">Booked online (${bkFor(s.id).length})</h3><div id="s_bk" style="margin-bottom:10px">${bkFor(s.id).map(b=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span><b>${esc(b.name)}</b> <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Paid":"Not paid yet"}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" class="btn sm ghost" data-bkedit="${b.id}">Edit</button><button type="button" class="btn sm ghost" data-bkadd="${esc(b.member_id||"")}">Check in</button></span></div>`).join("")}</div>`:""}
     <h3 style="margin:8px 0 6px">Attendance</h3>
     <div class="row" style="margin-bottom:8px">${sel("s_addm","Add a member…",S.members.filter(m=>m.type==="member").sort(byName).map(m=>`<option value="${m.id}">${esc(memLabel(m))}</option>`).join(""))}</div>
     <div class="row" style="margin-bottom:8px">${sel("s_addn","Add a non-member…",S.members.filter(m=>m.type==="nonmember").sort(byName).map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join(""))}<button type="button" class="btn sm ghost" id="s_walk">New walk-in</button></div>
@@ -2827,7 +2832,7 @@ function sessionDlg(s, preset){
   document.getElementById("s_instr").onchange=e=>{ s.instructorId=e.target.value; document.getElementById("s_pctwrap").style.display = instRate(s).mode==="pct"?"":"none"; drawSum(); };
   document.getElementById("s_status").onchange=e=>{ s.instStatus=e.target.value; drawSum(); };
   document.getElementById("s_addm").onchange=e=>{ const m=member(e.target.value); e.target.value=""; if(m) add(m,"member"); };
-  const bkBox=document.getElementById("s_bk"); if(bkBox) bkBox.onclick=e=>{ const b=e.target.closest("[data-bkadd]"); if(!b) return; const m=member(b.dataset.bkadd); if(m) add(m, m.type==="member"?"member":"nonmember"); else toast("This member isn't in your records anymore."); };
+  const bkBox=document.getElementById("s_bk"); if(bkBox) bkBox.onclick=e=>{ const ed=e.target.closest("[data-bkedit]"); if(ed){ bkMoveDlg(ed.dataset.bkedit, ()=>{ const x=S.sessions.find(y=>y.id===s.id); if(x) sessionDlg(x); }); return; } const b=e.target.closest("[data-bkadd]"); if(!b) return; const m=member(b.dataset.bkadd); if(m) add(m, m.type==="member"?"member":"nonmember"); else toast("This member isn't in your records anymore."); };
   document.getElementById("s_addn").onchange=e=>{ const m=member(e.target.value); e.target.value=""; if(m) add(m,"nonmember"); };
   document.getElementById("s_walk").onclick=()=>{
     const n=prompt("Walk-in name (saved as non-member)"); if(!n||!n.trim()) return;
