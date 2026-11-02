@@ -764,6 +764,7 @@ async function loadBookings(){
 const bkFor = sid => BK.filter(b=>b.class_id===sid);
 const bkPend = s => bkFor(s.id).filter(b=>b.status!=="confirmed" && !(s.attendees||[]).some(a=>a.memberId && a.memberId===b.member_id)).length;
 const pendTag = s => { const n=bkPend(s); return n?` · ${n} to confirm`:""; };
+const sesFlag = (s, auto) => s && s.status==="cancelled" ? " · CANCELLED" : s && s.status==="full" ? " · FULLY BOOKED (closed)" : auto;
 const capOf = s => +(s&&s.capacity) || +S.settings.capacity || 9;
 const slotsTaken = s => { const bk=bkFor(s.id).filter(b=>b.status==="confirmed"), ids=new Set(bk.map(b=>b.member_id).filter(Boolean)); return bk.length + (s.attendees||[]).filter(a=>!ids.has(a.memberId)).length; };
 const bkWhen = b => { const d=new Date(b.starts_at); return d.toLocaleDateString("en-PH",{weekday:"short",month:"short",day:"numeric"})+" · "+d.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}); };
@@ -828,15 +829,15 @@ const sesStartISO = s => new Date(`${s.date}T${(s.time||"00:00").slice(0,5)}:00+
 function bkMoveDlg(id, back){
   const b = BK.find(x=>x.id===id); if(!b) return;
   const now = Date.now();
-  const opts = (S.sessions||[]).filter(s=>s.id!==b.class_id && s.date && new Date(sesStartISO(s)).getTime()>now)
+  const opts = (S.sessions||[]).filter(s=>s.id!==b.class_id && s.date && s.status!=="cancelled" && new Date(sesStartISO(s)).getTime()>now)
     .sort((x,y)=>(x.date+(x.time||"")).localeCompare(y.date+(y.time||"")));
   if(!opts.length){ toast("No upcoming classes to move to. Add a class first."); return; }
-  const label = s => { const left = capOf(s)-slotsTaken(s), i=instr(s.instructorId);
+  const label = s => { const left = s.status==="full"?0:capOf(s)-slotsTaken(s), i=instr(s.instructorId);
     return `${new Date(s.date+"T00:00").toLocaleDateString("en-PH",{weekday:"short",month:"short",day:"numeric"})} · ${fmtTime(s.time)} · ${typeName(s)}${i?" · "+i.name:""} — ${left>0?left+" slot"+(left===1?"":"s")+" left":"FULL"}`; };
   const sameType = (S.sessions||[]).find(x=>x.id===b.class_id);
   openDlg(back?"Edit booking":"Move / Rebook booking", `
     <p class="small" style="margin:0 0 10px"><b>${esc(b.name)}</b> · Ref ${esc(b.ref)}<br><span class="muted">Now: ${esc(b.class_name||"Class")} · ${esc(bkWhen(b))}</span></p>
-    <label class="f">Move to class<select id="mv_ses">${opts.map(s=>{ const full=capOf(s)-slotsTaken(s)<=0;
+    <label class="f">Move to class<select id="mv_ses">${opts.map(s=>{ const full=s.status==="full"||capOf(s)-slotsTaken(s)<=0;
       return `<option value="${s.id}" ${full?"disabled":""}>${esc(label(s))}</option>`; }).join("")}</select></label>
     <label class="row" style="gap:8px;margin-top:10px"><input type="checkbox" id="mv_mail" ${b.status==="confirmed"&&bkEmailOf(b)?"checked":""} ${bkEmailOf(b)?"":"disabled"}> <span class="small">Email the new schedule to the student${bkEmailOf(b)?"":" (no email on file)"}</span></label>
     <p class="small muted" style="margin:10px 0 0">Payment and status stay the same${b.status==="confirmed"?" (stays Paid)":""}. The old slot opens up for others. Full classes can't be picked.</p>
@@ -1889,7 +1890,7 @@ function vDash(){
   <div class="card"><div class="row between" style="margin-bottom:6px"><h3>Coming up</h3><button class="btn sm" data-act="newSession">Add class</button></div>
   ${upWeek.length?upDays.map(d=>`<h3 style="margin:14px 0 4px">${fmtDate(d)} <span class="muted small" style="font-weight:400">· ${new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long"})} · ${upWeek.filter(o=>o.d===d).length} scheduled</span></h3>
     <ul class="list">${upWeek.filter(o=>o.d===d).map(o=>{ const s=o.x; return o.k==="s"
-      ? `<li><div class="row between"><span><b>${fmtTime(s.time)}</b> · ${esc(typeName(s))}</span><span class="muted small">${esc(instr(s.instructorId)?.name||"No instructor")} · ${slotsTaken(s)}/${capOf(s)} pax${slotsTaken(s)>=capOf(s)?" · FULLY BOOKED":""}${pendTag(s)}</span></div></li>`
+      ? `<li><div class="row between"><span><b>${fmtTime(s.time)}</b> · ${esc(typeName(s))}</span><span class="muted small">${esc(instr(s.instructorId)?.name||"No instructor")} · ${slotsTaken(s)}/${capOf(s)} pax${sesFlag(s, slotsTaken(s)>=capOf(s)?" · FULLY BOOKED":"")}${pendTag(s)}</span></div></li>`
       : `<li><div class="row between"><span><b>${fmtTime(s.time)}</b> · Rental</span><span class="muted small">${esc(s.renter)} · ${(+s.hours||0)+(+s.extHours||0)} hrs</span></div></li>`; }).join("")}</ul>`).join("")
     + (upLater?`<p class="small muted" style="margin:10px 0 0">${upLater} more on later days. See the Classes tab.</p>`:"")
     :`<p class="empty">Nothing scheduled yet.</p>`}
@@ -1918,7 +1919,7 @@ function vSessionList(viewSeg){
     const nm=(s.attendees||[]).filter(a=>a.kind==="nonmember").length;
     return `<div class="card">
       <div class="row between"><div><h3>${fmtDate(s.date)} · ${fmtTime(s.time)}</h3><p class="small muted" style="margin:2px 0 0"><span class="pill pink">${esc(typeName(s))}</span> · ${ins?`<button class="linkbtn" data-act="openInstr" data-id="${ins.id}">${esc(ins.name)}</button>`:"No instructor"}</p></div>
-      <span class="pill ${slotsTaken(s)>=capOf(s)?"bad":""}">${slotsTaken(s)}/${capOf(s)} pax${slotsTaken(s)>=capOf(s)?" · Fully booked":""}${pendTag(s)}</span></div>
+      <span class="pill ${slotsTaken(s)>=capOf(s)||s.status?"bad":""}">${slotsTaken(s)}/${capOf(s)} pax${sesFlag(s, slotsTaken(s)>=capOf(s)?" · Fully booked":"")}${pendTag(s)}</span></div>
       <p class="small" style="margin:10px 0 2px">Sales <b class="money">${peso(c.gross)}</b> · ${n-nm} members, ${nm} non-members${c.usedMin?` · <span class="muted">minimum pay applied</span>`:""}${c.note?` · <span class="muted">${c.note}</span>`:""}${c.absent?` · <span class="pill bad">Instructor absent</span>`:""}</p>
       ${splitBar(c.inst,c.biz,c.pct,c)}
       ${(()=>{ const e=expectedCalc(s); return e.pending?`<p class="small" style="margin:8px 0 0"><span class="muted">Expected with ${e.pending} paid booking${e.pending===1?"":"s"}:</span> Sales <b class="money">${peso(e.gross)}</b> · Instructor ${peso(e.inst)} · Studio ${peso(e.biz)}</p>`:""; })()}
@@ -1941,7 +1942,7 @@ function vWeek(){
     const full = new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long",month:"long",day:"numeric"});
     return `<div class="wkday${d===today?" today":""}"><div class="wkh"><span class="dw${i===0||i===6?" we":""}">${dw}</span><span class="dn">${shortD(d)}</span></div>
       ${items.map(s=>{ const ins=instr(s.instructorId), n=slotsTaken(s);
-        return `<button type="button" class="wkc" data-act="editSession" data-id="${s.id}"><span class="tm">${fmtTime(s.time)||"No time"}</span><b>${esc(typeName(s))}</b><span class="sub">${ins?esc(ins.name)+" · ":""}${n}/${capOf(s)} pax${n>=capOf(s)?" · FULLY BOOKED":""}${pendTag(s)}</span></button>`; }).join("")}
+        return `<button type="button" class="wkc" data-act="editSession" data-id="${s.id}"><span class="tm">${fmtTime(s.time)||"No time"}</span><b>${esc(typeName(s))}</b><span class="sub">${ins?esc(ins.name)+" · ":""}${n}/${capOf(s)} pax${sesFlag(s, n>=capOf(s)?" · FULLY BOOKED":"")}${pendTag(s)}</span></button>`; }).join("")}
       ${items.length?"":`<p class="small muted" style="margin:0">No class</p>`}
       <button type="button" class="btn sm ghost wkadd" data-act="calAdd" data-date="${d}" aria-label="Add class on ${esc(full)}">+ Add class</button></div>`;
   }).join("");
@@ -2807,12 +2808,16 @@ function sessionDlg(s, preset){
       <label class="f" id="s_pctwrap" ${instRate(s).mode!=="pct"?'style="display:none"':""}>Instructor % for this class<input type="number" min="0" max="100" id="s_pct" placeholder="Default ${pct}%" value="${s.pctOverride}"></label>
       <label class="f">Instructor attendance<select id="s_status"><option value="present" ${s.instStatus!=="absent"?"selected":""}>Present</option><option value="absent" ${s.instStatus==="absent"?"selected":""}>Absent</option></select></label>
     </div>
+    <div class="f" style="margin:4px 0 12px"><span>Online booking for this class</span>
+      <div class="row" id="s_bst" style="margin-top:6px;gap:6px">${[["","Open"],["full","Mark fully booked"],["cancelled","Mark cancelled"]].map(([v,l])=>`<button type="button" class="btn sm ${(s.status||"")===v?(v==="cancelled"?"danger":""):"ghost"}" data-bst="${v}" ${(s.status||"")===v&&v==="cancelled"?'style="background:var(--bad);color:#fff"':""}>${l}</button>`).join("")}</div>
+      <p class="small muted" id="s_bstnote" style="margin:6px 0 0"></p></div>
     ${bkFor(s.id).length?`<h3 style="margin:8px 0 6px">Booked online (${bkFor(s.id).length})</h3><div id="s_bk" style="margin-bottom:10px">${bkFor(s.id).map(b=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span><b>${esc(b.name)}</b> <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Paid":"Not paid yet"}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" class="btn sm ghost" data-bkedit="${b.id}">Edit</button><button type="button" class="btn sm ghost" data-bkadd="${esc(b.member_id||"")}">Check in</button></span></div>`).join("")}</div>`:""}
     <h3 style="margin:8px 0 6px">Attendance</h3>
     <div class="row" style="margin-bottom:8px">${sel("s_addm","Add a member…",S.members.filter(m=>m.type==="member").sort(byName).map(m=>`<option value="${m.id}">${esc(memLabel(m))}</option>`).join(""))}</div>
     <div class="row" style="margin-bottom:8px">${sel("s_addn","Add a non-member…",S.members.filter(m=>m.type==="nonmember").sort(byName).map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join(""))}<button type="button" class="btn sm ghost" id="s_walk">New walk-in</button></div>
     <div id="s_att"></div><div id="s_sum"></div>`,
   { onSave:()=>{
+      if(bst) s.status=bst; else delete s.status;
       s.date=val("s_date"); s.time=val("s_time"); { const c=+val("s_cap"); if(c>0) s.capacity=Math.round(c); else delete s.capacity; } s.typeId=val("s_type"); s.instructorId=val("s_instr"); s.instStatus=val("s_status");
       const p=val("s_pct"); s.pctOverride = p===""?"":Math.max(0,Math.min(100,+p));
       if(!s.date){ toast("Pick a date"); return false; }
@@ -2832,6 +2837,12 @@ function sessionDlg(s, preset){
   document.getElementById("s_instr").onchange=e=>{ s.instructorId=e.target.value; document.getElementById("s_pctwrap").style.display = instRate(s).mode==="pct"?"":"none"; drawSum(); };
   document.getElementById("s_status").onchange=e=>{ s.instStatus=e.target.value; drawSum(); };
   document.getElementById("s_addm").onchange=e=>{ const m=member(e.target.value); e.target.value=""; if(m) add(m,"member"); };
+  let bst = s.status||"";
+  const drawBst = ()=>{ document.querySelectorAll("#s_bst [data-bst]").forEach(x=>{ const on=x.dataset.bst===bst, c=x.dataset.bst==="cancelled"; x.className="btn sm "+(on?(c?"danger":""):"ghost"); x.style.cssText = on&&c?"background:var(--bad);color:#fff":""; });
+    const nb = bkFor(s.id).length;
+    document.getElementById("s_bstnote").innerHTML = bst==="full" ? "Booking link shows this class as <b>Fully booked</b>. No new bookings." : bst==="cancelled" ? `This class is hidden from the booking link.${nb?` <b>${nb} student${nb===1?" is":"s are"} still booked</b> — tap Edit on each to move or cancel them.`:""}` : "Students can book this class online until it's full."; };
+  document.getElementById("s_bst").onclick = e=>{ const x=e.target.closest("[data-bst]"); if(!x) return; bst=x.dataset.bst; drawBst(); };
+  drawBst();
   const bkBox=document.getElementById("s_bk"); if(bkBox) bkBox.onclick=e=>{ const ed=e.target.closest("[data-bkedit]"); if(ed){ bkMoveDlg(ed.dataset.bkedit, ()=>{ const x=S.sessions.find(y=>y.id===s.id); if(x) sessionDlg(x); }); return; } const b=e.target.closest("[data-bkadd]"); if(!b) return; const m=member(b.dataset.bkadd); if(m) add(m, m.type==="member"?"member":"nonmember"); else toast("This member isn't in your records anymore."); };
   document.getElementById("s_addn").onchange=e=>{ const m=member(e.target.value); e.target.value=""; if(m) add(m,"nonmember"); };
   document.getElementById("s_walk").onclick=()=>{
