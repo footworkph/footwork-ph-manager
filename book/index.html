@@ -27,7 +27,7 @@ p{line-height:1.45;margin:6px 0}
 .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px}
 .neon{border:2px solid var(--pink);box-shadow:0 0 22px rgba(250,18,148,.25)}
 label{display:block;font-weight:700;font-size:14px;margin:14px 0 6px;color:#DADAE6}
-input[type=text],input[type=tel]{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:#0C0C12;color:var(--ink);font:600 18px "Barlow Semi Condensed",Arial,sans-serif}
+input[type=text],input[type=tel],input[type=email]{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:#0C0C12;color:var(--ink);font:600 18px "Barlow Semi Condensed",Arial,sans-serif}
 input:focus{outline:2px solid var(--lime);outline-offset:1px}
 .check{display:flex;gap:10px;align-items:center;font-weight:600;color:var(--muted);margin-top:12px;font-size:15px}
 .check input{width:20px;height:20px;accent-color:var(--pink)}
@@ -298,7 +298,7 @@ function bookSheet(s){
       <li>Booking closes <b>${data.cutoffHours} hours</b> before class.</li>
       <li>Bring your membership card. Show it at the counter for your points and discount.</li>
     </ul>
-    <div class="rules" style="border-color:var(--pink)">📧 <b>All booking confirmations are sent to your email.</b><br>${data.member.emailMasked?`We'll send it to <b>${esc(data.member.emailMasked)}</b>. Please check your email address. Wrong email? Message our Facebook page before you pay.`:`We don't have your email yet. Message our Facebook page so we can add it.`}</div>
+    <div class="rules" style="border-color:var(--pink)">📧 <b>All booking confirmations are sent to your email.</b><br>${data.member.emailMasked?`We'll send it to <b>${esc(data.member.emailMasked)}</b>. This is the email you gave us, so please double-check it. Wrong email? Message our Facebook page before you pay.`:`We don't have your email yet. Message our Facebook page so we can add it.`}</div>
     ${s.free?"":POLICY+`<label class="check" style="margin-top:0;color:var(--ink)"><input type="checkbox" id="bkAgree"> I understand: no cancellation, no refund, not transferable. No show = forfeited.</label>`}
     <div class="err" id="bkErr" hidden></div>
     <button class="btn pink block" id="bkGo">Confirm booking</button>
@@ -449,8 +449,8 @@ function renderGuest(){
   $("gOpenTxt").textContent = G.guestOpenHours>=168 ? "Guest booking is open now." : "Members get first pick, so guest booking opens "+G.guestOpenHours+" hours before each class."; $("gCutH").textContent = G.cutoffHours+" hours";
   const mine = gGet().filter(b=>new Date(b.when) > new Date(Date.now()-3*3600e3));
   gSet(mine);
-  $("gMine").innerHTML = (mine.length ? `<h2>Your guest bookings</h2>`+mine.map(b=>`<div class="card" style="margin-bottom:10px"><div class="row"><div><div class="cn">${esc(b.cls)}</div><div class="co">${esc(fmtWhen(b.when))} · Ref ${esc(b.ref)}${b.free?"":b.proofSent?" · Proof sent ✓":" · Waiting for payment"}</div></div><button class="btn sm" data-gshow="${esc(b.ref)}">${b.free||b.proofSent?"Show booking":"Pay / upload proof"}</button></div></div>`).join("") : "")
-    + `<button class="btn ghost block" style="margin:0 0 14px" data-gupload="1">📎 Already booked? Upload proof of payment</button>`;
+  $("gMine").innerHTML = (mine.length ? `<h2>Your guest bookings</h2>`+mine.map(b=>`<div class="card" style="margin-bottom:10px"><div class="row"><div><div class="cn">${esc(b.cls)}</div><div class="co">${esc(fmtWhen(b.when))} · Ref ${esc(b.ref)}${b.free||b.confirmed?" · Confirmed ✓":b.proofSent?" · Proof sent ✓":" · Waiting for payment"}</div></div><button class="btn sm" data-gshow="${esc(b.ref)}">${b.free||b.proofSent||b.confirmed?"Show booking":"Pay / upload proof"}</button></div></div>`).join("") : "")
+    + `<button class="btn ghost block" style="margin:0 0 10px" data-gupload="1">📎 Already booked? Upload proof of payment</button><button class="btn ghost block" style="margin:0 0 14px" data-gstatus="1">🔎 Check my booking status</button>`;
   const types = [...new Set(G.sessions.map(s=>s.class))];
   if(gType && !types.includes(gType)) gType="";
   $("gChips").innerHTML = types.length>1 ? [`<button class="chip" aria-pressed="${!gType}" data-gtype="">All classes</button>`, ...types.map(t=>`<button class="chip" aria-pressed="${gType===t}" data-gtype="${esc(t)}">${esc(t)}</button>`)].join("") : "";
@@ -489,7 +489,8 @@ function gBookSheet(s){
       <label for="gName">Full name</label><input type="text" id="gName" maxlength="80" autocomplete="name" required>
       <label for="gMob">Mobile number</label><input type="tel" id="gMob" inputmode="tel" placeholder="09xx xxx xxxx" autocomplete="tel" required>
       <label for="gFb">Facebook / Messenger name</label><input type="text" id="gFb" maxlength="80" required>
-      <label for="gEmail">Email</label><p class="small" style="margin:2px 0 6px;color:var(--warn);font-weight:700">📧 All booking confirmations are sent to your email. Please check your email address.</p><input type="email" id="gEmail" inputmode="email" maxlength="120" autocomplete="email" required>
+      <label for="gEmail">Email</label><div class="small" style="margin:2px 0 6px;padding:8px 10px;border:1px solid var(--warn);border-radius:10px;color:var(--warn);font-weight:700;line-height:1.45">📧 Your booking confirmation is sent ONLY to the email you type here. You give us this email, so please double-check the spelling. A wrong email means you won't receive your confirmation.</div><input type="email" id="gEmail" inputmode="email" maxlength="120" autocomplete="email" required>
+      <label for="gEmail2">Type your email again</label><input type="email" id="gEmail2" inputmode="email" maxlength="120" autocomplete="off" required>
       <ul class="rules">
         ${s.free?`<li>This class is <b>FREE</b>. No payment needed. Your slot is <b>confirmed right away</b>.</li>`:`<li>Strictly by appointment. Your slot is <b>confirmed once you pay</b>.</li>`}
         <li>First-timers sign a short waiver at the studio before class.</li>
@@ -511,6 +512,8 @@ function gBookSheet(s){
     if(mob.replace(/\D/g,"").length<10) return err("Please type your full mobile number.");
     if(fb.length<2) return err("Please type your Facebook or Messenger name.");
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return err("Please type a valid email. We send your booking confirmation there.");
+    if(em.toLowerCase()!==$("gEmail2").value.trim().toLowerCase()) return err("Your 2 emails don't match. Please double-check your email.");
+    if(!confirm("Is this your correct email?\n\n"+em+"\n\nYour booking confirmation will be sent here.")) return;
     if(!$("gAgree").checked) return err(GERR.not_agreed);
     $("gGo").disabled=true; $("gGo").innerHTML=`<span class="spin"></span>`;
     const r = await rpc("fw_guest_book", {p_session:s.id, p_name:name, p_mobile:mob, p_email:em, p_fb:fb, p_agreed:true});
@@ -562,11 +565,45 @@ function gUploadSheet(){
     <button class="btn ghost block" style="margin-top:10px" data-close>Close</button>`);
   gProofWire({mob:""}, ()=>$("guRef").value.trim().toUpperCase());
 }
+const STAT = {pending:["warn","Waiting for payment"], confirmed:["lime","Confirmed ✓"], cancelled:["bad","Cancelled"]};
+function gStatusSheet(){
+  openSheet(`<h3>Check my booking status</h3>
+    <p class="small muted">Type your booking ref and the mobile number you booked with.</p>
+    <label for="gsRef">Booking ref</label><input type="text" id="gsRef" maxlength="20" placeholder="BK-XXXXXX" autocapitalize="characters">
+    <label for="gsMob">Mobile number</label><input type="tel" id="gsMob" inputmode="tel" placeholder="09xx xxx xxxx">
+    <div class="err" id="gsErr" hidden></div><div id="gsOut"></div>
+    <button class="btn pink block" id="gsGo" type="button">Check status</button>
+    <button class="btn ghost block" style="margin-top:10px" data-close>Close</button>`);
+  $("gsGo").onclick = async ()=>{
+    const ref=$("gsRef").value.trim().toUpperCase(), mob=$("gsMob").value.trim();
+    const err = m=>{ $("gsErr").textContent=m; $("gsErr").hidden=false; $("gsOut").innerHTML=""; };
+    $("gsErr").hidden=true;
+    if(!/^BK-?[A-Z0-9]{4,}$/.test(ref)) return err("Please type your booking ref (example: BK-A307FE).");
+    if(mob.replace(/\D/g,"").length<10) return err("Please type the mobile number you booked with.");
+    $("gsGo").disabled=true; $("gsGo").innerHTML=`<span class="spin"></span>`;
+    const r = await rpc("fw_guest_status", {p_ref:ref, p_mobile:mob});
+    $("gsGo").disabled=false; $("gsGo").textContent="Check status";
+    if(!r.ok) return err(GERR[r.error]||ERR.network);
+    let st = STAT[r.status]||["warn",r.status];
+    if(r.status==="pending" && r.proof_sent) st=["warn","Checking your payment"];
+    $("gsOut").innerHTML = `<div class="kv" style="margin:12px 0"><b>Ref</b><span class="ref">${esc(r.ref)}</span><b>Name</b><span>${esc(r.name)}</span><b>Class</b><span>${esc(r.class)}</span><b>When</b><span>${esc(fmtWhen(r.starts_at))}</span><b>Status</b><span><span class="pill ${st[0]}">${esc(st[1])}</span></span>${r.email?`<b>Email</b><span>${esc(r.email)}</span>`:""}</div>${r.status==="confirmed"?`<p class="small" style="color:var(--lime);font-weight:700">Your slot is confirmed. Screenshot this and show it at the counter. See you in class!</p>`:""}`;
+    const list=gGet(), x=list.find(y=>y.ref===r.ref);
+    if(x){ x.confirmed = r.status==="confirmed"; x.proofSent = x.proofSent||r.proof_sent; gSet(list); renderGuest(); }
+  };
+}
+async function gRefresh(b){
+  if(b.free||!b.mob) return b;
+  const r = await rpc("fw_guest_status", {p_ref:b.ref, p_mobile:b.mob});
+  if(!r.ok) return b;
+  const nb = Object.assign({}, b, {confirmed:r.status==="confirmed", proofSent:b.proofSent||r.proof_sent});
+  gSet([...gGet().filter(y=>y.ref!==b.ref), nb]); renderGuest();
+  return nb;
+}
 function gDone(b, fresh){
   openSheet(`<p class="small" style="margin:0 0 4px;color:var(--lime);font-weight:700">📸 SCREENSHOT THIS PAGE</p>
     <h3>${fresh?"Slot reserved!":"Your booking"}</h3>
-    <div class="kv"><b>Ref</b><span class="ref" style="font-size:28px">${esc(b.ref)}</span><b>Name</b><span>${esc(b.name)}</span><b>Class</b><span>${esc(b.cls)}</span><b>When</b><span>${esc(fmtWhen(b.when))}</span>${b.coach?`<b>Coach</b><span>${esc(b.coach)}</span>`:""}<b>Status</b><span>${b.free?`<span class="pill lime">Confirmed ✓ · FREE</span>`:`<span class="pill warn">Waiting for payment</span>`}</span></div>
-    ${b.free?`<ul class="rules"><li>This class is free. <b>No payment needed.</b></li><li>Show this screenshot at the studio counter.</li></ul>${BEFORE(false)}
+    <div class="kv"><b>Ref</b><span class="ref" style="font-size:28px">${esc(b.ref)}</span><b>Name</b><span>${esc(b.name)}</span><b>Class</b><span>${esc(b.cls)}</span><b>When</b><span>${esc(fmtWhen(b.when))}</span>${b.coach?`<b>Coach</b><span>${esc(b.coach)}</span>`:""}<b>Status</b><span>${b.free?`<span class="pill lime">Confirmed ✓ · FREE</span>`:b.confirmed?`<span class="pill lime">Confirmed ✓</span>`:b.proofSent?`<span class="pill warn">Checking payment</span>`:`<span class="pill warn">Waiting for payment</span>`}</span></div>
+    ${b.confirmed&&!b.free?`<ul class="rules"><li><b>Your payment is verified and your slot is confirmed.</b></li><li>Show this screenshot at the studio counter.</li></ul>${BEFORE(false)}<button class="btn block" style="margin-top:16px" data-close>Done</button>`:b.free?`<ul class="rules"><li>This class is free. <b>No payment needed.</b></li><li>Show this screenshot at the studio counter.</li></ul>${BEFORE(false)}
     ${upsell()}
     <button class="btn block" style="margin-top:16px" data-close>Done</button>`:`
     <div class="rules" style="border-color:var(--pink)">
@@ -582,17 +619,18 @@ function gDone(b, fresh){
       <li>We check it and confirm your slot.</li>
     </ol>
     ${gProofForm(b)}
-    <p class="small muted">Your slot is confirmed once we verify your payment.${b.email?" We'll email your confirmation to <b>"+esc(b.email)+"</b>. Please check your inbox and spam folder.":""}</p>${PAY_REMIND}${BEFORE(false)}
+    <p class="small muted">Your slot is confirmed once we verify your payment.${b.email?" We'll email your confirmation to <b>"+esc(b.email)+"</b> (the email you gave us). Check your Inbox, Promotions, Updates and Spam folders.":""} You can also tap <b>Check my booking status</b> on this page anytime.</p>${PAY_REMIND}${BEFORE(false)}
     ${upsell()}
     <button class="btn block" style="margin-top:16px" data-close>Done</button>`}`);
   gProofWire(b);
   if($("gCopy")) $("gCopy").onclick = ()=>{ try{ navigator.clipboard.writeText(G.payNumber.replace(/\D/g,"")).then(()=>toast("Number copied")); }catch(e){ toast(G.payNumber); } };
 }
 document.addEventListener("click", e=>{
-  const b = e.target.closest("[data-gbook],[data-gshow],[data-gtype],[data-gupload]"); if(!b || !G) return;
+  const b = e.target.closest("[data-gbook],[data-gshow],[data-gtype],[data-gupload],[data-gstatus]"); if(!b || !G) return;
+  if(b.hasAttribute("data-gstatus")){ gStatusSheet(); return; }
   if(b.hasAttribute("data-gupload")){ gUploadSheet(); return; }
   if(b.hasAttribute("data-gtype")){ gType=b.dataset.gtype; renderGuest(); return; }
-  if(b.dataset.gshow){ const x=gGet().find(y=>y.ref===b.dataset.gshow); if(x) gDone(x,false); return; }
+  if(b.dataset.gshow){ const x=gGet().find(y=>y.ref===b.dataset.gshow); if(x){ gDone(x,false); gRefresh(x).then(nb=>{ if(nb.confirmed!==!!x.confirmed && $("dlg").classList.contains("show")) gDone(nb,false); }); } return; }
   const s = G.sessions.find(x=>x.id===b.dataset.gbook); if(s) gBookSheet(s);
 });
 $("guestBtn").onclick = ()=>{ history.replaceState(null,"","#guest"); loadGuest(); };
