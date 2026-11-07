@@ -300,6 +300,9 @@ table.t .r{text-align:right}
 .fwa-sig{display:grid;grid-template-columns:1fr 1fr;gap:10mm;margin-top:12mm}
 .fwa-sig div{border-top:.3mm solid #0B0B0C;padding-top:1.2mm;font-size:9pt;text-align:center}
 .fwa-sig b{display:block;font-size:10.5pt}
+.fwa-t.sign td{height:11mm;font-size:10.4pt}
+.fwa-t.sign td.sg{border-left:.4mm solid #FA1294}
+.fwa-t.sign tr.blank td{color:#9A9A9A;font-size:8pt}
 .fwc-off{position:fixed;left:-10000px;top:0;z-index:-1}
 @media print{
   @page{size:A4;margin:0}
@@ -817,6 +820,7 @@ function payOrderCard(){
       <div class="small muted">Paid ${esc(bkStamp(bkPayAt(b)))}${b.paid_at?"":" (time you confirmed)"} · Booked ${esc(bkStamp(b.created_at))} · Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}</div></li>`; };
     return `<details style="margin-top:8px"${over?" open":""}><summary class="small"><b>${esc(f.class_name||"Class")} · ${esc(bkWhen(f))}</b> · ${paid.length}/${cap} paid${over?` <span class="pill bad">${paid.length-cap} over limit</span>`:paid.length>=cap?` <span class="pill bad">Fully booked</span>`:""}</summary>
       <ul class="list">${paid.map(li).join("")||`<li class="small muted">No payments yet.</li>`}</ul>
+      ${list.some(b=>b.status==="confirmed")?`<button type="button" class="btn sm ghost" data-act="bkSheet" data-id="${esc(id)}" style="margin:6px 0 2px">🖨 Print sign-in sheet</button>`:""}
       ${unpaid.length?`<p class="small muted" style="margin:6px 0 2px">No payment yet (${unpaid.length}): ${unpaid.map(b=>esc(b.name)+" · booked "+esc(bkStamp(b.created_at))).join("; ")}</p>`:""}</details>`;
   });
   const overN = ids.filter(id=>{ const s=(S.sessions||[]).find(x=>x.id===id); return BK.filter(b=>b.class_id===id&&bkPayAt(b)).length > capOf(s); }).length;
@@ -1235,9 +1239,10 @@ function contractPages(d){
 }
 
 /* ---------- instructor agreement + parent consent (printable) ---------- */
-const docPages = d => d.docKind==="ackr" ? ackPages(d) : d.docKind==="instr" ? instrPages(d) : d.docKind==="consent" ? consentPages(d) : d.docKind==="waiver" ? waiverPages(d) : contractPages(d);
-const docTitle = d => d.docKind==="ackr" ? "Footwork PH Coach Acknowledgement Receipt" : d.docKind==="instr" ? "Footwork PH Instructor Agreement" : d.docKind==="consent" ? "Footwork PH Parent Consent Form" : d.docKind==="waiver" ? "Footwork PH Walk-in Waiver" : "Footwork PH Membership Agreement";
-const docFileName = d => d.docKind==="ackr" ? `Footwork-PH-Coach-Receipt-${d.date||""}-${(d.name||"").trim()}`.replace(/[^\w.-]+/g,"-").replace(/-+/g,"-").replace(/-$/,"") + ".pdf"
+const docPages = d => d.docKind==="attn" ? attnPages(d) : d.docKind==="ackr" ? ackPages(d) : d.docKind==="instr" ? instrPages(d) : d.docKind==="consent" ? consentPages(d) : d.docKind==="waiver" ? waiverPages(d) : contractPages(d);
+const docTitle = d => d.docKind==="attn" ? "Footwork PH Attendance Sign-in Sheet" : d.docKind==="ackr" ? "Footwork PH Coach Acknowledgement Receipt" : d.docKind==="instr" ? "Footwork PH Instructor Agreement" : d.docKind==="consent" ? "Footwork PH Parent Consent Form" : d.docKind==="waiver" ? "Footwork PH Walk-in Waiver" : "Footwork PH Membership Agreement";
+const docFileName = d => d.docKind==="attn" ? `Footwork-PH-Sign-in-${d.date||""}-${(d.cls||"").trim()}-${(d.time||"").replace(":","")}`.replace(/[^\w.-]+/g,"-").replace(/-+/g,"-").replace(/-$/,"") + ".pdf"
+  : d.docKind==="ackr" ? `Footwork-PH-Coach-Receipt-${d.date||""}-${(d.name||"").trim()}`.replace(/[^\w.-]+/g,"-").replace(/-+/g,"-").replace(/-$/,"") + ".pdf"
   : d.docKind==="instr" ? `Footwork-PH-Instructor-Agreement-${(d.name||"").trim()}`.replace(/[^\w.-]+/g,"-").replace(/-+/g,"-").replace(/-$/,"") + ".pdf"
   : d.docKind==="waiver" ? `Footwork-PH-Waiver-${(d.name||"").trim()}`.replace(/[^\w.-]+/g,"-").replace(/-+/g,"-").replace(/-$/,"") + ".pdf"
   : d.docKind==="consent" ? `Footwork-PH-Parent-Consent-${(d.name||"").trim()}`.replace(/[^\w.-]+/g,"-").replace(/-+/g,"-").replace(/-$/,"") + ".pdf"
@@ -1285,6 +1290,32 @@ function ackPages(d){
     <div class="fwa-sig"><div><b>${esc(d.name)}</b>Received by (Coach) · Signature &amp; date</div><div><b>Footwork PH Management</b>Released by · Signature &amp; date</div></div>
     <div class="fwc-ft">Printed ${esc(d.printed)} · ${esc(FWC_FOOT)}</div></section>`;
 }
+/* ---------- attendance sign-in sheet (confirmed online bookings) ---------- */
+function attnData(classId){
+  const list = BK.filter(b=>b.class_id===classId && b.status==="confirmed").sort((a,b)=>new Date(bkPayAt(a)||a.created_at)-new Date(bkPayAt(b)||b.created_at));
+  const s = (S.sessions||[]).find(x=>x.id===classId), f = BK.find(b=>b.class_id===classId) || {};
+  const d0 = f.starts_at ? new Date(f.starts_at) : null;
+  const date = s ? s.date : d0 ? d0.toLocaleDateString("en-CA") : "", time = s ? s.time : d0 ? d0.toTimeString().slice(0,5) : "";
+  const ins = s && instr(s.instructorId);
+  return { docKind:"attn", name:f.class_name||"Class", cls: s ? typeName(s) : (f.class_name||"Class"), date, time, coach: ins ? ins.name : "", cap: capOf(s),
+    rows: list.map(b=>({ name:b.name||"", id: b.is_member ? (b.member_no||"Member") : "Guest", ref:b.ref||"" })),
+    printed: new Date().toLocaleString("en-PH",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}) };
+}
+function attnPages(d){
+  const blanks = Math.max(3, d.cap - d.rows.length);
+  const body = d.rows.map((r,i)=>`<tr><td class="c">${i+1}</td><td>${esc(r.name)}</td><td>${esc(r.id)}</td><td>${esc(r.ref)}</td><td></td><td class="sg"></td></tr>`).join("")
+    + Array.from({length:blanks},(_,k)=>`<tr class="blank"><td class="c">${d.rows.length+k+1}</td><td>Walk-in / added at studio</td><td></td><td></td><td></td><td class="sg"></td></tr>`).join("");
+  return `<section class="fwc-page">${fwdHead("ATTENDANCE SIGN-IN SHEET","CONFIRMED BOOKINGS")}
+    <table class="fwc-det"><tr>${fwdCell("Class",esc(d.cls))}${fwdCell("Date",esc(fmtDate(d.date)))}${fwdCell("Time",esc(fmtTime(d.time)))}</tr>
+      <tr>${fwdCell("Coach",esc(d.coach))}${fwdCell("Confirmed bookings",String(d.rows.length))}${fwdCell("Max pax",String(d.cap))}</tr></table>
+    <div class="fwc-bar"><span>SIGN IN WHEN YOU ARRIVE</span><em>Your signature confirms you attended this class.</em></div>
+    <table class="fwa-t sign"><thead><tr><th style="width:6%" class="c">#</th><th style="width:30%">Name</th><th style="width:13%">Member ID</th><th style="width:14%">Booking ref</th><th style="width:11%">Time in</th><th style="width:26%">Signature</th></tr></thead>
+      <tbody>${body}</tbody></table>
+    <div class="fwa-ack">By signing, I confirm that I attended this class in person. I agree to the Footwork PH studio rules and waiver. Paid bookings are non-refundable and non-transferable.</div>
+    <div class="fwa-sig"><div><b>${esc(d.coach||"Coach")}</b>Coach · Signature</div><div><b>Footwork PH Management</b>Checked by · Signature</div></div>
+    <div class="fwc-ft">Printed ${esc(d.printed)} · ${esc(FWC_FOOT)}</div></section>`;
+}
+const printSheet = id => { const d=attnData(id); if(!d.rows.length){ toast("No confirmed bookings for this class yet"); return; } printContract(d); };
 function instrDocData(i){
   const names = teaches(i);
   const mode = payMode(i);
@@ -1541,7 +1572,7 @@ function printContract(d){
   const iab=inAppBrowser();
   const fname=docFileName(d);
   ov.innerHTML=`<div class="fwc-tb">
-      <div class="row"><h3>${esc(d.docKind==="ackr"?"Coach receipt":d.docKind==="instr"?"Instructor agreement":d.docKind==="consent"?"Parent consent":d.docKind==="waiver"?"Waiver":"Contract")} · ${esc(d.name||"Member")}</h3><button type="button" class="btn sm ghost" data-v="close">✕ Close</button></div>
+      <div class="row"><h3>${esc(d.docKind==="attn"?"Sign-in sheet · "+(d.cls||""):d.docKind==="ackr"?"Coach receipt":d.docKind==="instr"?"Instructor agreement":d.docKind==="consent"?"Parent consent":d.docKind==="waiver"?"Waiver":"Contract")} · ${esc(d.name||"Member")}</h3><button type="button" class="btn sm ghost" data-v="close">✕ Close</button></div>
       ${iab?`<div class="fwc-warn"><b>You're in the Messenger (in-app) browser.</b> It blocks printing and downloads. Tap <b>•••</b> at the top right, then <b>Open in Safari</b> (or your browser). Then print from there.<div class="row" style="margin-top:6px"><button type="button" class="btn sm" data-v="copy">Copy app link</button></div></div>`:""}
       <div class="row">
         <button type="button" class="btn sm" data-v="print">🖨 Print</button>
@@ -2906,7 +2937,7 @@ function sessionDlg(s, preset){
     <div class="f" style="margin:4px 0 12px"><span>Online booking for this class</span>
       <div class="row" id="s_bst" style="margin-top:6px;gap:6px">${[["","Open"],["full","Mark fully booked"],["cancelled","Mark cancelled"]].map(([v,l])=>`<button type="button" class="btn sm ${(s.status||"")===v?(v==="cancelled"?"danger":""):"ghost"}" data-bst="${v}" ${(s.status||"")===v&&v==="cancelled"?'style="background:var(--bad);color:#fff"':""}>${l}</button>`).join("")}</div>
       <p class="small muted" id="s_bstnote" style="margin:6px 0 0"></p></div>
-    ${bkFor(s.id).length?`<h3 style="margin:8px 0 6px">Booked online (${bkFor(s.id).length})</h3><div id="s_bk" style="margin-bottom:10px">${bkFor(s.id).map(b=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span><b>${esc(b.name)}</b> <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Paid":"Not paid yet"}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" class="btn sm ghost" data-bkedit="${b.id}">Edit</button><button type="button" class="btn sm ghost" data-bkadd="${esc(b.member_id||"")}">Check in</button></span></div>`).join("")}</div>`:""}
+    ${bkFor(s.id).length?`<div class="row between" style="margin:8px 0 6px"><h3 style="margin:0">Booked online (${bkFor(s.id).length})</h3>${bkFor(s.id).some(b=>b.status==="confirmed")?`<button type="button" class="btn sm ghost" id="s_sheet">🖨 Sign-in sheet</button>`:""}</div><div id="s_bk" style="margin-bottom:10px">${bkFor(s.id).map(b=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span><b>${esc(b.name)}</b> <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Paid":"Not paid yet"}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" class="btn sm ghost" data-bkedit="${b.id}">Edit</button><button type="button" class="btn sm ghost" data-bkadd="${esc(b.member_id||"")}">Check in</button></span></div>`).join("")}</div>`:""}
     <h3 style="margin:8px 0 6px">Attendance</h3>
     <div class="row" style="margin-bottom:8px">${sel("s_addm","Add a member…",S.members.filter(m=>m.type==="member").sort(byName).map(m=>`<option value="${m.id}">${esc(memLabel(m))}</option>`).join(""))}</div>
     <div class="row" style="margin-bottom:8px">${sel("s_addn","Add a non-member…",S.members.filter(m=>m.type==="nonmember").sort(byName).map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join(""))}<button type="button" class="btn sm ghost" id="s_walk">New walk-in</button></div>
@@ -2928,6 +2959,7 @@ function sessionDlg(s, preset){
     const pr = priceFor(m, s, kind);
     s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind, amount:Math.round(pr.amount*100)/100}, pr.pkg?{pkg:true}:{})); drawAtt(); toast(m.name+" checked in ✓ — tap Save to keep it");
   };
+  { const sh=document.getElementById("s_sheet"); if(sh) sh.onclick=()=>printSheet(s.id); }
   document.getElementById("s_sum").onclick=e=>{ if(!e.target.closest("[data-ackr]")) return;
     const r = Object.assign(structuredClone(s), {date:val("s_date")||s.date, time:val("s_time")||s.time, typeId:val("s_type"), instructorId:val("s_instr"), instStatus:val("s_status")});
     if(!r.instructorId){ toast("Pick the instructor first"); return; }
@@ -3362,6 +3394,7 @@ function handleAct(b){
   else if(a==="bkCancel"){ const bk=BK.find(x=>x.id===id); if(confirm(`Cancel ${bk?bk.name+"'s":"this"} booking${bk?" for "+(bk.class_name||"class")+" · "+bkWhen(bk):""}? The slot opens up for others.`)) bkSet(id,{status:"cancelled",cancelled_by:"studio"},"Booking cancelled"); }
   else if(a==="bkMove") bkMoveDlg(id);
   else if(a==="bkProof") bkProof(id);
+  else if(a==="bkSheet") printSheet(id);
   else if(a==="bkCopy") copyText(BOOK_URL,"Booking link copied");
   else if(a==="bkRefresh") loadBookings().then(()=>{ render(); toast("Bookings updated"); });
   else if(a==="editSession") sessionDlg(ses());
