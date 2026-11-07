@@ -805,10 +805,12 @@ function payOrderCard(){
       <ul class="list">${paid.map(li).join("")||`<li class="small muted">No payments yet.</li>`}</ul>
       ${unpaid.length?`<p class="small muted" style="margin:6px 0 2px">No payment yet (${unpaid.length}): ${unpaid.map(b=>esc(b.name)+" · booked "+esc(bkStamp(b.created_at))).join("; ")}</p>`:""}</details>`;
   });
-  return `<div class="card"><h3 style="margin:0">Who paid first</h3>
+  const overN = ids.filter(id=>{ const s=(S.sessions||[]).find(x=>x.id===id); return BK.filter(b=>b.class_id===id&&bkPayAt(b)).length > capOf(s); }).length;
+  return `<div class="card"><details${payOrderOpen?" open":""} ontoggle="payOrderOpen=this.open"><summary style="cursor:pointer"><h3 style="margin:0;display:inline">Who paid first</h3>${overN?` <span class="pill bad">${overN} class${overN>1?"es":""} over limit</span>`:""}</summary>
     <p class="small muted" style="margin:6px 0 4px">Ranked by the time each student uploaded proof or entered a payment ref. If there's no upload, it uses the time you confirmed. Anyone past the class limit is marked <b>Over limit</b>. The earlier payer keeps the slot.</p>
-    ${blocks.join("")}</div>`;
+    ${blocks.join("")}</details></div>`;
 }
+let payOrderOpen = false;
 function bookingsCard(){
   if(!sbUser) return "";
   const byPay = (a,b)=> (bkPayAt(a)?0:1)-(bkPayAt(b)?0:1) || new Date(bkPayAt(a)||a.created_at)-new Date(bkPayAt(b)||b.created_at);
