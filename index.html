@@ -2814,6 +2814,10 @@ function sessionDlg(s, preset){
     box.innerHTML = s.attendees.length ? s.attendees.map((a,i)=>`<div class="att"><span class="nm">${esc(member(a.memberId)?.name||newNon.find(n=>n.id===a.memberId)?.name||a.name)} <span class="pill ${a.kind==="nonmember"?"":"pink"}">${a.kind==="nonmember"?"non-member":"member"}</span>${a.pkg?` <span class="pill ok">package</span>`:""}</span><input type="number" min="0" aria-label="Amount paid" data-i="${i}" value="${a.amount}"><button type="button" class="x" data-rm="${i}" aria-label="Remove">✕</button></div>`).join("") : `<p class="small muted">No one checked in yet.</p>`;
     box.querySelectorAll("input[data-i]").forEach(inp=>inp.oninput=()=>{ s.attendees[+inp.dataset.i].amount=+inp.value||0; drawSum(); });
     box.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{ s.attendees.splice(+b.dataset.rm,1); drawAtt(); });
+    document.querySelectorAll("#s_bk [data-bkadd]").forEach(b=>{ const done = !!b.dataset.bkadd && s.attendees.some(a=>a.memberId===b.dataset.bkadd);
+      b.textContent = done ? "✓ Checked in" : "Check in";
+      b.className = "btn sm"+(done?"":" ghost");
+      b.style.cssText = done ? "background:var(--good);border-color:var(--good);color:#fff" : ""; });
     drawSum();
   };
   const sel = (id,label,items) => `<select id="${id}" style="flex:1;min-width:150px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)"><option value="">${label}</option>${items}</select>`;
@@ -2848,11 +2852,11 @@ function sessionDlg(s, preset){
     },
     onDelete: isNew?null:()=>{ S.sessions=S.sessions.filter(x=>x.id!==s.id); } });
   const add = (m, kind) => {
-    if(s.attendees.some(a=>a.memberId===m.id)){ toast("Already checked in"); return; }
+    if(s.attendees.some(a=>a.memberId===m.id)){ toast("Already checked in ✓"); return; }
     if(!bkFor(s.id).some(b=>b.member_id===m.id) && slotsTaken(s)>=capOf(s)) toast("Class is fully booked (max "+capOf(s)+" pax).");
     s.typeId = val("s_type"); s.date = val("s_date") || s.date;
     const pr = priceFor(m, s, kind);
-    s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind, amount:Math.round(pr.amount*100)/100}, pr.pkg?{pkg:true}:{})); drawAtt();
+    s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind, amount:Math.round(pr.amount*100)/100}, pr.pkg?{pkg:true}:{})); drawAtt(); toast(m.name+" checked in ✓ — tap Save to keep it");
   };
   document.getElementById("s_pct").oninput=e=>{ s.pctOverride=e.target.value; drawSum(); };
   document.getElementById("s_instr").onchange=e=>{ s.instructorId=e.target.value; document.getElementById("s_pctwrap").style.display = instRate(s).mode==="pct"?"":"none"; drawSum(); };
