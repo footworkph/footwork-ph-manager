@@ -286,6 +286,20 @@ table.t .r{text-align:right}
 .fwd-ticks{font-size:9.4pt;font-weight:500;line-height:1.55;padding:1mm 0}
 /* printable membership contract */
 #fwPrint{display:none}
+.fwa-t{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:1mm}
+.fwa-t th{background:#0B0B0C;color:#fff;font-family:"Barlow Condensed",Arial,sans-serif;font-weight:700;font-size:9pt;height:6mm;border:.2mm solid #0B0B0C;padding:0 2mm;text-align:left}
+.fwa-t td{border:.2mm solid #0B0B0C;height:6.6mm;padding:0 2mm;font-size:9.6pt;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fwa-t .r{text-align:right}.fwa-t .c{text-align:center}
+.fwa-t tfoot td{font-weight:700;background:#F2F2F2}
+.fwa-sum{width:100%;border-collapse:collapse;margin-top:3mm}
+.fwa-sum td{border:.25mm solid #0B0B0C;padding:1.6mm 3mm;font-size:10.5pt;font-weight:600}
+.fwa-sum td.r{text-align:right;font-family:"Barlow Condensed",Arial,sans-serif;font-size:13pt;font-weight:800}
+.fwa-sum tr.coach td{background:#B4FA2A}
+.fwa-sum tr.studio td{background:#FFE3F2}
+.fwa-ack{border:.25mm solid #0B0B0C;padding:2.4mm 3.2mm;font-size:10pt;line-height:1.35;margin-top:3mm}
+.fwa-sig{display:grid;grid-template-columns:1fr 1fr;gap:10mm;margin-top:12mm}
+.fwa-sig div{border-top:.3mm solid #0B0B0C;padding-top:1.2mm;font-size:9pt;text-align:center}
+.fwa-sig b{display:block;font-size:10.5pt}
 .fwc-off{position:fixed;left:-10000px;top:0;z-index:-1}
 @media print{
   @page{size:A4;margin:0}
@@ -806,11 +820,10 @@ function payOrderCard(){
       ${unpaid.length?`<p class="small muted" style="margin:6px 0 2px">No payment yet (${unpaid.length}): ${unpaid.map(b=>esc(b.name)+" · booked "+esc(bkStamp(b.created_at))).join("; ")}</p>`:""}</details>`;
   });
   const overN = ids.filter(id=>{ const s=(S.sessions||[]).find(x=>x.id===id); return BK.filter(b=>b.class_id===id&&bkPayAt(b)).length > capOf(s); }).length;
-  return `<div class="card"><details${payOrderOpen?" open":""} ontoggle="payOrderOpen=this.open"><summary style="cursor:pointer"><h3 style="margin:0;display:inline">Who paid first</h3>${overN?` <span class="pill bad">${overN} class${overN>1?"es":""} over limit</span>`:""}</summary>
+  return `<div class="card"><details${window.fwPayOrderOpen?" open":""} ontoggle="window.fwPayOrderOpen=this.open"><summary style="cursor:pointer"><h3 style="margin:0;display:inline">Who paid first</h3>${overN?` <span class="pill bad">${overN} class${overN>1?"es":""} over limit</span>`:""}</summary>
     <p class="small muted" style="margin:6px 0 4px">Ranked by the time each student uploaded proof or entered a payment ref. If there's no upload, it uses the time you confirmed. Anyone past the class limit is marked <b>Over limit</b>. The earlier payer keeps the slot.</p>
     ${blocks.join("")}</details></div>`;
 }
-let payOrderOpen = false;
 function bookingsCard(){
   if(!sbUser) return "";
   const byPay = (a,b)=> (bkPayAt(a)?0:1)-(bkPayAt(b)?0:1) || new Date(bkPayAt(a)||a.created_at)-new Date(bkPayAt(b)||b.created_at);
@@ -1222,9 +1235,10 @@ function contractPages(d){
 }
 
 /* ---------- instructor agreement + parent consent (printable) ---------- */
-const docPages = d => d.docKind==="instr" ? instrPages(d) : d.docKind==="consent" ? consentPages(d) : d.docKind==="waiver" ? waiverPages(d) : contractPages(d);
-const docTitle = d => d.docKind==="instr" ? "Footwork PH Instructor Agreement" : d.docKind==="consent" ? "Footwork PH Parent Consent Form" : d.docKind==="waiver" ? "Footwork PH Walk-in Waiver" : "Footwork PH Membership Agreement";
-const docFileName = d => d.docKind==="instr" ? `Footwork-PH-Instructor-Agreement-${(d.name||"").trim()}`.replace(/[^\w.-]+/g,"-").replace(/-+/g,"-").replace(/-$/,"") + ".pdf"
+const docPages = d => d.docKind==="ackr" ? ackPages(d) : d.docKind==="instr" ? instrPages(d) : d.docKind==="consent" ? consentPages(d) : d.docKind==="waiver" ? waiverPages(d) : contractPages(d);
+const docTitle = d => d.docKind==="ackr" ? "Footwork PH Coach Acknowledgement Receipt" : d.docKind==="instr" ? "Footwork PH Instructor Agreement" : d.docKind==="consent" ? "Footwork PH Parent Consent Form" : d.docKind==="waiver" ? "Footwork PH Walk-in Waiver" : "Footwork PH Membership Agreement";
+const docFileName = d => d.docKind==="ackr" ? `Footwork-PH-Coach-Receipt-${d.date||""}-${(d.name||"").trim()}`.replace(/[^\w.-]+/g,"-").replace(/-+/g,"-").replace(/-$/,"") + ".pdf"
+  : d.docKind==="instr" ? `Footwork-PH-Instructor-Agreement-${(d.name||"").trim()}`.replace(/[^\w.-]+/g,"-").replace(/-+/g,"-").replace(/-$/,"") + ".pdf"
   : d.docKind==="waiver" ? `Footwork-PH-Waiver-${(d.name||"").trim()}`.replace(/[^\w.-]+/g,"-").replace(/-+/g,"-").replace(/-$/,"") + ".pdf"
   : d.docKind==="consent" ? `Footwork-PH-Parent-Consent-${(d.name||"").trim()}`.replace(/[^\w.-]+/g,"-").replace(/-+/g,"-").replace(/-$/,"") + ".pdf"
   : contractFileName(d);
@@ -1240,6 +1254,37 @@ function fwdHead(sub, tag){
 const fwdSec = (n, title, i, paras, items) => `<div class="fwc-sec"><div class="fwc-sh ${i%2?"l":"p"}">${n}.&nbsp; ${title}</div>${(paras||[]).map(t=>`<p class="t">${t}</p>`).join("")}${items&&items.length?`<ul>${items.map(t=>`<li>${t}</li>`).join("")}</ul>`:""}</div>`;
 const fwdCell = (lab,val,span) => `<td${span?` colspan="${span}"`:""}><div class="fwc-lab">${lab}</div><div class="fwc-val">${val||""}</div></td>`;
 
+/* ---------- coach acknowledgement receipt (per class, checked-in students only) ---------- */
+function ackData(s){
+  const c = sessionCalc(s), ins = instr(s.instructorId);
+  const rows = (s.attendees||[]).map(a=>{ const m = member(a.memberId);
+    return { name:(m&&m.name)||a.name||"Student", kind: a.pkg ? "Package" : a.kind==="nonmember" ? "Non-member" : "Member", amount:+a.amount||0 }; });
+  const coachPct = c.gross>0 ? Math.round(c.inst/c.gross*1000)/10 : (c.mode==="pct" ? c.pct : 0);
+  return { docKind:"ackr", name: ins ? ins.name : "Coach", date:s.date, time:s.time, cls:typeName(s), rows, c,
+    basis: c.absent ? "Coach absent — no pay" : c.mode==="pct" ? `${c.pct}% coach / ${100-c.pct}% studio${c.usedMin?" (minimum per class applied)":""}` : `Fixed rate: ${c.note}`,
+    coachPct, studioPct: Math.round((100-coachPct)*10)/10,
+    no: "AR-"+String(s.date||"").replace(/-/g,"")+"-"+String(s.id||"").slice(-4).toUpperCase(),
+    printed: new Date().toLocaleString("en-PH",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}) };
+}
+function ackPages(d){
+  const c = d.c;
+  const body = d.rows.length ? d.rows.map((r,i)=>`<tr><td class="c">${i+1}</td><td>${esc(r.name)}</td><td>${r.kind}</td><td class="r">${peso(r.amount)}</td></tr>`).join("")
+    : `<tr><td colspan="4" class="c">No students checked in.</td></tr>`;
+  return `<section class="fwc-page">${fwdHead("ACKNOWLEDGEMENT RECEIPT","COACH FEE")}
+    <table class="fwc-det"><tr>${fwdCell("Receipt no.",esc(d.no))}${fwdCell("Class date",esc(fmtDate(d.date)))}${fwdCell("Class time",esc(fmtTime(d.time)))}</tr>
+      <tr>${fwdCell("Class",esc(d.cls))}${fwdCell("Coach",esc(d.name),2)}</tr>
+      <tr>${fwdCell("Pay basis",esc(d.basis),3)}</tr></table>
+    <div class="fwc-bar"><span>CHECKED-IN STUDENTS (${d.rows.length})</span><em>Only students actually checked in are counted.</em></div>
+    <table class="fwa-t"><thead><tr><th style="width:9%" class="c">#</th><th style="width:49%">Student</th><th style="width:20%">Type</th><th style="width:22%" class="r">Amount paid</th></tr></thead>
+      <tbody>${body}</tbody></table>
+    <table class="fwa-sum">
+      <tr><td>Total class sales (${d.rows.length} checked in)</td><td class="r">${peso(c.gross)}</td></tr>
+      <tr class="coach"><td>Coach share · ${d.coachPct}%</td><td class="r">${peso(c.inst)}</td></tr>
+      <tr class="studio"><td>Studio share · ${d.studioPct}%</td><td class="r">${peso(c.biz)}</td></tr></table>
+    <div class="fwa-ack">I, <b>${esc(d.name)}</b>, acknowledge that I received <b>${peso(c.inst)}</b> as my coach fee for the class above. I have seen the list of checked-in students and the percentage split used to compute my fee.</div>
+    <div class="fwa-sig"><div><b>${esc(d.name)}</b>Received by (Coach) · Signature &amp; date</div><div><b>Footwork PH Management</b>Released by · Signature &amp; date</div></div>
+    <div class="fwc-ft">Printed ${esc(d.printed)} · ${esc(FWC_FOOT)}</div></section>`;
+}
 function instrDocData(i){
   const names = teaches(i);
   const mode = payMode(i);
@@ -1496,7 +1541,7 @@ function printContract(d){
   const iab=inAppBrowser();
   const fname=docFileName(d);
   ov.innerHTML=`<div class="fwc-tb">
-      <div class="row"><h3>${esc(d.docKind==="instr"?"Instructor agreement":d.docKind==="consent"?"Parent consent":d.docKind==="waiver"?"Waiver":"Contract")} · ${esc(d.name||"Member")}</h3><button type="button" class="btn sm ghost" data-v="close">✕ Close</button></div>
+      <div class="row"><h3>${esc(d.docKind==="ackr"?"Coach receipt":d.docKind==="instr"?"Instructor agreement":d.docKind==="consent"?"Parent consent":d.docKind==="waiver"?"Waiver":"Contract")} · ${esc(d.name||"Member")}</h3><button type="button" class="btn sm ghost" data-v="close">✕ Close</button></div>
       ${iab?`<div class="fwc-warn"><b>You're in the Messenger (in-app) browser.</b> It blocks printing and downloads. Tap <b>•••</b> at the top right, then <b>Open in Safari</b> (or your browser). Then print from there.<div class="row" style="margin-top:6px"><button type="button" class="btn sm" data-v="copy">Copy app link</button></div></div>`:""}
       <div class="row">
         <button type="button" class="btn sm" data-v="print">🖨 Print</button>
@@ -2828,7 +2873,7 @@ function sessionDlg(s, preset){
   const pi = preset && preset.instructorId ? instr(preset.instructorId) : null;
   s = s ? structuredClone(s) : {id:uid(), date:(preset&&preset.date)||todayISO(), time:"18:00", typeId:(pi&&pi.types&&pi.types[0])||S.settings.classTypes[0]?.id||"", title:"", instructorId:(pi&&pi.id)||S.settings.instructors[0]?.id||"", attendees:[], paidOut:false, instStatus:"present", pctOverride:""};
   const newNon = [];
-  const drawSum = ()=>{ const c=sessionCalc(s), e=expectedCalc(s); document.getElementById("s_sum").innerHTML = (e.pending?`<p class="small" style="margin:10px 0 0"><b>Expected with paid bookings</b> · ${slotsTaken(s)}/${capOf(s)} pax · Sales <b>${peso(e.gross)}</b></p>${splitBar(e.inst,e.biz,e.pct,e)}<p class="small muted" style="margin:10px 0 0">Actual (checked in only)</p>`:"") + `<p class="small" style="margin:10px 0 0">${slotsTaken(s)}/${capOf(s)} pax (${s.attendees.length} checked in) · Sales <b>${peso(c.gross)}</b></p>${splitBar(c.inst,c.biz,c.pct,c)}`; };
+  const drawSum = ()=>{ const c=sessionCalc(s), e=expectedCalc(s); document.getElementById("s_sum").innerHTML = (e.pending?`<p class="small" style="margin:10px 0 0"><b>Expected with paid bookings</b> · ${slotsTaken(s)}/${capOf(s)} pax · Sales <b>${peso(e.gross)}</b></p>${splitBar(e.inst,e.biz,e.pct,e)}<p class="small muted" style="margin:10px 0 0">Actual (checked in only)</p>`:"") + `<p class="small" style="margin:10px 0 0">${slotsTaken(s)}/${capOf(s)} pax (${s.attendees.length} checked in) · Sales <b>${peso(c.gross)}</b></p>${splitBar(c.inst,c.biz,c.pct,c)}${s.attendees.length?`<button type="button" class="btn sm ghost" data-ackr style="margin-top:10px">🖨 Print coach receipt</button>`:""}`; };
   const drawAtt = ()=>{
     const box=document.getElementById("s_att");
     box.innerHTML = s.attendees.length ? s.attendees.map((a,i)=>`<div class="att"><span class="nm">${esc(member(a.memberId)?.name||newNon.find(n=>n.id===a.memberId)?.name||a.name)} <button type="button" class="pill ${a.kind==="nonmember"?"":"pink"}" data-kind="${i}" title="Tap to switch member / non-member" style="border:0;cursor:pointer;font:inherit">${a.kind==="nonmember"?"non-member":"member"} ⇄</button>${a.pkg?` <span class="pill ok">package</span>`:""}</span><input type="number" min="0" aria-label="Amount paid" data-i="${i}" value="${a.amount}"><button type="button" class="x" data-rm="${i}" aria-label="Remove">✕</button></div>`).join("") : `<p class="small muted">No one checked in yet.</p>`;
@@ -2883,6 +2928,10 @@ function sessionDlg(s, preset){
     const pr = priceFor(m, s, kind);
     s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind, amount:Math.round(pr.amount*100)/100}, pr.pkg?{pkg:true}:{})); drawAtt(); toast(m.name+" checked in ✓ — tap Save to keep it");
   };
+  document.getElementById("s_sum").onclick=e=>{ if(!e.target.closest("[data-ackr]")) return;
+    const r = Object.assign(structuredClone(s), {date:val("s_date")||s.date, time:val("s_time")||s.time, typeId:val("s_type"), instructorId:val("s_instr"), instStatus:val("s_status")});
+    if(!r.instructorId){ toast("Pick the instructor first"); return; }
+    printContract(ackData(r)); };
   document.getElementById("s_pct").oninput=e=>{ s.pctOverride=e.target.value; drawSum(); };
   document.getElementById("s_instr").onchange=e=>{ s.instructorId=e.target.value; document.getElementById("s_pctwrap").style.display = instRate(s).mode==="pct"?"":"none"; drawSum(); };
   document.getElementById("s_status").onchange=e=>{ s.instStatus=e.target.value; drawSum(); };
