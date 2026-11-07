@@ -825,9 +825,18 @@ function bookingsCard(){
    ${pend.length?`<h3 style="margin:10px 0 6px">To confirm (${pend.length})</h3><ul class="list">${pend.map(row).join("")}</ul>`:`<p class="small muted" style="margin:6px 0">No bookings waiting for payment.</p>`}
    ${conf.length?`<details style="margin-top:10px"><summary class="small"><b>Confirmed (${conf.length})</b></summary><ul class="list">${conf.map(row).join("")}</ul></details>`:""}</div>`;
 }
+/* find an existing MEMBER record for a person: same mobile, else same email, else same name (middle initial ignored) */
+const digits10 = v => String(v||"").replace(/\D/g,"").slice(-10);
+const nameKey = v => String(v||"").toLowerCase().replace(/[^a-z\s]/g," ").split(/\s+/).filter(w=>w.length>1).join(" ");
+function memberMatch(p){
+  if(!p) return null;
+  const d=digits10(p.contact), e=String(p.email||"").trim().toLowerCase(), n=nameKey(p.name);
+  const mems=S.members.filter(x=>x.type==="member" && x.id!==p.id);
+  return mems.find(x=>d && digits10(x.contact)===d) || mems.find(x=>e && String(x.email||"").trim().toLowerCase()===e) || mems.find(x=>n && nameKey(x.name)===n) || null;
+}
 function guestToNonMember(b){
-  const digits = v => String(v||"").replace(/\D/g,"").slice(-10);
-  let m = S.members.find(x=>digits(x.contact) && digits(x.contact)===digits(b.contact));
+  const digits = digits10;
+  let m = memberMatch(b) || S.members.find(x=>digits(x.contact) && digits(x.contact)===digits(b.contact));
   if(!m){
     m = {id:uid(), name:b.name, contact:b.contact||"", email:b.email||"", type:"nonmember", notes:`Booked online as guest (${b.ref})${b.note?" · "+b.note:""}`, startDate:todayISO()};
     S.members.push(m); save();
@@ -1782,7 +1791,8 @@ function sessionCalc(s){
 function expectedCalc(s){
   const done = new Set((s.attendees||[]).map(a=>a.memberId));
   const extra = bkFor(s.id).filter(b=>b.status==="confirmed" && (!b.member_id || !done.has(b.member_id))).map(b=>{
-    const m = b.member_id && member(b.member_id);
+    let m = b.member_id && member(b.member_id);
+    if(m && m.type!=="member") m = memberMatch(m) || memberMatch(b) || m;
     const kind = m ? (m.type==="member"?"member":"nonmember") : (b.is_member?"member":"nonmember");
     const amt = isSet(b.amount) && +b.amount===0 ? 0 : (m ? priceFor(m, s, kind).amount : rate(kind==="member"?"member":"nonMember", s.typeId));
     return {memberId:b.member_id||("bk_"+b.id), kind, amount:Math.round((+amt||0)*100)/100};
@@ -2819,9 +2829,14 @@ function sessionDlg(s, preset){
   const drawSum = ()=>{ const c=sessionCalc(s), e=expectedCalc(s); document.getElementById("s_sum").innerHTML = (e.pending?`<p class="small" style="margin:10px 0 0"><b>Expected with paid bookings</b> · ${slotsTaken(s)}/${capOf(s)} pax · Sales <b>${peso(e.gross)}</b></p>${splitBar(e.inst,e.biz,e.pct,e)}<p class="small muted" style="margin:10px 0 0">Actual (checked in only)</p>`:"") + `<p class="small" style="margin:10px 0 0">${slotsTaken(s)}/${capOf(s)} pax (${s.attendees.length} checked in) · Sales <b>${peso(c.gross)}</b></p>${splitBar(c.inst,c.biz,c.pct,c)}`; };
   const drawAtt = ()=>{
     const box=document.getElementById("s_att");
-    box.innerHTML = s.attendees.length ? s.attendees.map((a,i)=>`<div class="att"><span class="nm">${esc(member(a.memberId)?.name||newNon.find(n=>n.id===a.memberId)?.name||a.name)} <span class="pill ${a.kind==="nonmember"?"":"pink"}">${a.kind==="nonmember"?"non-member":"member"}</span>${a.pkg?` <span class="pill ok">package</span>`:""}</span><input type="number" min="0" aria-label="Amount paid" data-i="${i}" value="${a.amount}"><button type="button" class="x" data-rm="${i}" aria-label="Remove">✕</button></div>`).join("") : `<p class="small muted">No one checked in yet.</p>`;
+    box.innerHTML = s.attendees.length ? s.attendees.map((a,i)=>`<div class="att"><span class="nm">${esc(member(a.memberId)?.name||newNon.find(n=>n.id===a.memberId)?.name||a.name)} <button type="button" class="pill ${a.kind==="nonmember"?"":"pink"}" data-kind="${i}" title="Tap to switch member / non-member" style="border:0;cursor:pointer;font:inherit">${a.kind==="nonmember"?"non-member":"member"} ⇄</button>${a.pkg?` <span class="pill ok">package</span>`:""}</span><input type="number" min="0" aria-label="Amount paid" data-i="${i}" value="${a.amount}"><button type="button" class="x" data-rm="${i}" aria-label="Remove">✕</button></div>`).join("") : `<p class="small muted">No one checked in yet.</p>`;
     box.querySelectorAll("input[data-i]").forEach(inp=>inp.oninput=()=>{ s.attendees[+inp.dataset.i].amount=+inp.value||0; drawSum(); });
     box.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{ s.attendees.splice(+b.dataset.rm,1); drawAtt(); });
+    box.querySelectorAll("[data-kind]").forEach(b=>b.onclick=()=>{ const a=s.attendees[+b.dataset.kind]; a.kind = a.kind==="member"?"nonmember":"member";
+      const m=member(a.memberId)||newNon.find(n=>n.id===a.memberId); s.typeId=val("s_type");
+      const pr = m ? priceFor(m, s, a.kind) : {amount:rate(a.kind==="member"?"member":"nonMember", s.typeId), pkg:false};
+      a.amount=Math.round(pr.amount*100)/100; if(pr.pkg) a.pkg=true; else delete a.pkg;
+      drawAtt(); toast(`Changed to ${a.kind==="member"?"member":"non-member"} · ${peso(a.amount)} — tap Save`); });
     document.querySelectorAll("#s_bk [data-bkadd]").forEach(b=>{ const done = !!b.dataset.bkadd && s.attendees.some(a=>a.memberId===b.dataset.bkadd);
       b.textContent = done ? "✓ Checked in" : "Check in";
       b.className = "btn sm"+(done?"":" ghost");
@@ -2876,7 +2891,15 @@ function sessionDlg(s, preset){
     document.getElementById("s_bstnote").innerHTML = bst==="full" ? "Booking link shows this class as <b>Fully booked</b>. No new bookings." : bst==="cancelled" ? `This class is hidden from the booking link.${nb?` <b>${nb} student${nb===1?" is":"s are"} still booked</b> — tap Edit on each to move or cancel them.`:""}` : "Students can book this class online until it's full."; };
   document.getElementById("s_bst").onclick = e=>{ const x=e.target.closest("[data-bst]"); if(!x) return; bst=x.dataset.bst; drawBst(); };
   drawBst();
-  const bkBox=document.getElementById("s_bk"); if(bkBox) bkBox.onclick=e=>{ const ed=e.target.closest("[data-bkedit]"); if(ed){ bkMoveDlg(ed.dataset.bkedit, ()=>{ const x=S.sessions.find(y=>y.id===s.id); if(x) sessionDlg(x); }); return; } const b=e.target.closest("[data-bkadd]"); if(!b) return; const m=member(b.dataset.bkadd); if(m) add(m, m.type==="member"?"member":"nonmember"); else toast("This member isn't in your records anymore."); };
+  const bkBox=document.getElementById("s_bk"); if(bkBox) bkBox.onclick=e=>{ const ed=e.target.closest("[data-bkedit]"); if(ed){ bkMoveDlg(ed.dataset.bkedit, ()=>{ const x=S.sessions.find(y=>y.id===s.id); if(x) sessionDlg(x); }); return; } const b=e.target.closest("[data-bkadd]"); if(!b) return; let m=member(b.dataset.bkadd);
+    if(m && m.type!=="member"){
+      /* booked as a guest but is really a member: use the member record and re-link the booking */
+      const bk=bkFor(s.id).find(x=>x.member_id===m.id), mm=memberMatch(m)||memberMatch(bk);
+      if(mm){ const old=m.id; s.attendees=s.attendees.filter(a=>!(a.memberId===old && a.kind==="nonmember"));
+        bkFor(s.id).filter(x=>x.member_id===old).forEach(x=>{ x.member_id=mm.id; sb.from("fw_bookings").update({member_id:mm.id, is_member:true, updated_at:new Date().toISOString()}).eq("id",x.id).then(r=>{ if(r.error) console.warn(r.error); }); });
+        b.dataset.bkadd=mm.id; m=mm; }
+    }
+    if(m) add(m, m.type==="member"?"member":"nonmember"); else toast("This member isn't in your records anymore."); };
   document.getElementById("s_addn").onchange=e=>{ const m=member(e.target.value); e.target.value=""; if(m) add(m,"nonmember"); };
   document.getElementById("s_walk").onclick=()=>{
     const n=prompt("Walk-in name (saved as non-member)"); if(!n||!n.trim()) return;
