@@ -517,6 +517,7 @@ function normalize(d){
   if(!st.ratesV2) seedRatesV2(st);
   if(!st.ratesV3){ st._usedPlans = (Array.isArray(d.members)?d.members:[]).map(m=>m.planId).filter(Boolean); seedRatesV3(st); delete st._usedPlans; }
   if(!st.ratesV4) seedRatesV4(st);
+  if(!st.ratesV5){ st.rates.nonMember.promo = 200; st.rates.nonMember.promoEnds = "2026-11-21"; st.ratesV5 = true; }
   if(!st.cap9){ st.capacity = 9; st.cap9 = true; }
   st.instructors = (st.instructors||[]).map(i=>Object.assign({pct:"",min:"",contact:"",notes:"",types:[]},i));
   st.mail = Object.assign({url:"", key:"", sent:{}}, ds.mail||{}); if(!st.mail.sent || typeof st.mail.sent!=="object") st.mail.sent = {};
@@ -1761,7 +1762,7 @@ const rate = (key, typeId) => {
   if(t && t.free && key!=="membershipFee") return 0;
   const tk = key==="member"?"memRate":key==="nonMember"?"nonRate":"";
   const reg = (t && tk && isSet(t[tk])) ? +t[tk] : (+r.reg||0);
-  if(promoOn() && isSet(r.promo)) return Math.min(+r.promo, reg);
+  if(promoOn() && isSet(r.promo) && (!r.promoEnds || todayISO()<=r.promoEnds)) return Math.min(+r.promo, reg);
   return reg;
 };
 /* packages: for members or non-members, one class type, counted only when used */
@@ -2257,7 +2258,8 @@ const GUEST_URL = BOOK_URL + "#guest";
 const PAY_LINE = "GCash or Maya 0933-855-2646 (Anjeleen P.)";
 function nonInviteData(){
   const R=S.settings.rates, p=S.settings.promo, today=todayISO();
-  const promo = p.active && (isSet(R.member.promo)||isSet(R.nonMember.promo)) && (!p.ends || p.ends>=today) ? {non:isSet(R.nonMember.promo)?+R.nonMember.promo:null, mem:isSet(R.member.promo)?+R.member.promo:null, ends:p.ends} : null;
+  const nonOn = isSet(R.nonMember.promo) && (!R.nonMember.promoEnds || R.nonMember.promoEnds>=today);
+  const promo = p.active && (isSet(R.member.promo)||nonOn) && (!p.ends || p.ends>=today) ? {non:nonOn?+R.nonMember.promo:null, nonEnds:nonOn?(R.nonMember.promoEnds||p.ends):"", mem:isSet(R.member.promo)?+R.member.promo:null, ends:p.ends} : null;
   const regNon = t => isSet(t.nonRate)?+t.nonRate:+R.nonMember.reg, regMem = t => isSet(t.memRate)?+t.memRate:+R.member.reg;
   const rates = S.settings.classTypes.filter(t=>!t.free).map(t=>({name:t.name, non:regNon(t), mem:regMem(t)}));
   const tn = ids => (ids||[]).map(id=>ctype(id)?.name).filter(Boolean).join(" · ") || "Any class";
@@ -2278,7 +2280,7 @@ function nonInviteHtml(note){
 <tr><td style="${F}background:#111111;padding:24px 16px;text-align:center"><div style="font-size:30px;font-weight:900;font-style:italic;letter-spacing:1px"><span style="color:#fff">FOOT</span><span style="color:${P}">WORK</span> <span style="color:${L}">PH</span></div><div style="font-size:13px;font-weight:800;color:${L};margin-top:6px;letter-spacing:2px">DANCE FITNESS STUDIO · BINANGONAN, RIZAL</div><div style="font-size:20px;font-weight:800;color:#fff;margin-top:10px">Your slot is waiting! 💃</div></td></tr>
 ${note?`<tr><td style="${F}padding:20px 20px 0;font-size:15px;line-height:1.55;color:#222">${esc(note).replace(/\n/g,"<br>")}</td></tr>`:""}
 <tr><td style="${F}padding:18px 20px 0;font-size:15px;line-height:1.55;color:#222">Thank you for registering with Footwork PH! Classes are <b>strictly by booking</b>, so reserve your slot online before you come to the studio.</td></tr>
-${d.promo?`<tr><td style="padding:18px 20px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111;border-radius:12px"><tr><td style="${F}padding:16px;text-align:center"><div style="font-size:12px;font-weight:800;color:${L};letter-spacing:2px">OPENING PROMO${d.promo.ends?` · UNTIL ${esc(fmtDate(d.promo.ends).toUpperCase())}`:""}</div>${d.promo.non!=null?`<div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.non)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · all classes</span></div>${d.promo.mem!=null?`<div style="font-size:13px;color:${L};margin-top:4px">Members pay only ${peso(d.promo.mem)}</div>`:""}`:`<div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.mem)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · MEMBERS ONLY</span></div><div style="font-size:13px;color:${L};margin-top:4px">Become a member for ${peso(d.fee)} to get the promo rate!</div>`}</td></tr></table></td></tr>`:""}
+${d.promo?`<tr><td style="padding:18px 20px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111;border-radius:12px"><tr><td style="${F}padding:16px;text-align:center"><div style="font-size:12px;font-weight:800;color:${L};letter-spacing:2px">OPENING PROMO${(d.promo.non!=null?d.promo.nonEnds:d.promo.ends)?` · UNTIL ${esc(fmtDate(d.promo.non!=null?d.promo.nonEnds:d.promo.ends).toUpperCase())}`:""}</div>${d.promo.non!=null?`<div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.non)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · all classes</span></div>${d.promo.mem!=null?`<div style="font-size:13px;color:${L};margin-top:4px">Members pay only ${peso(d.promo.mem)}</div>`:""}`:`<div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.mem)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · MEMBERS ONLY</span></div><div style="font-size:13px;color:${L};margin-top:4px">Become a member for ${peso(d.fee)} to get the promo rate!</div>`}</td></tr></table></td></tr>`:""}
 <tr><td align="center" style="padding:22px 20px 6px">${btn}<div style="${F}font-size:12px;color:#555;margin-top:8px;word-break:break-all">${GUEST_URL}</div></td></tr>
 ${h3("HOW TO BOOK YOUR SLOT")}
 <tr><td style="${F}padding:0 20px;font-size:14px;line-height:1.65;color:#222">
@@ -2308,7 +2310,7 @@ ${d.packs.map(x=>`<tr>${td(`<b>${esc(x.name)}</b><br><span style="font-size:12px
 function nonInviteText(note){
   const d=nonInviteData();
   return (note?note+"\n\n":"")+`FOOTWORK PH · Your slot is waiting!\n\nClasses are strictly by booking. Reserve your slot here:\n${GUEST_URL}\n\n`+
-    (d.promo?(d.promo.non!=null?`OPENING PROMO: ${peso(d.promo.non)} per session, all classes`:`MEMBERS-ONLY PROMO: ${peso(d.promo.mem)} per session. Become a member for ${peso(d.fee)} to get it`)+`${d.promo.ends?` until ${fmtDate(d.promo.ends)}`:""}.\n\n`:"")+
+    (d.promo?(d.promo.non!=null?`OPENING PROMO: ${peso(d.promo.non)} per session, all classes`:`MEMBERS-ONLY PROMO: ${peso(d.promo.mem)} per session. Become a member for ${peso(d.fee)} to get it`)+`${(d.promo.non!=null?d.promo.nonEnds:d.promo.ends)?` until ${fmtDate(d.promo.non!=null?d.promo.nonEnds:d.promo.ends)}`:""}.\n\n`:"")+
     `HOW TO BOOK:\n1. Open the link above.\n2. Find your class and tap Book. Guest booking opens 24 hours before each class.\n3. Type your name, mobile and Facebook name. Tick I agree, then Reserve my slot.\n4. Pay via ${PAY_LINE}. Free classes need no payment.\n5. Send your booking and payment screenshots to our Facebook page Footwork PH.\n\n`+
     `RATES PER SESSION (non-member / member):\n`+d.rates.map(r=>`• ${r.name}: ${peso(r.non)} / ${peso(r.mem)}`).join("\n")+
     (d.packs.length?`\n\nPACKAGES (non-member / member):\n`+d.packs.map(x=>`• ${x.sessions?x.sessions+" sessions":"Unli December"} · ${x.name}: ${peso(x.price)}${x.mem!=null?" / "+peso(x.mem):""}`).join("\n"):"")+
@@ -2655,6 +2657,7 @@ function vSettings(){
       ${rr("nonMember","Non-member per session")}${rr("member","Member per session")}${rr("membershipFee","Membership fee")}
     </tbody></table></div>
     <label class="f" style="margin-top:12px">Promo ends (optional)<input type="date" data-promoends value="${st.promo.ends}"></label>
+    <label class="f">Non-member promo ends earlier on (optional)<input type="date" data-nonpromoends value="${st.rates.nonMember.promoEnds||""}"></label>
     <p class="small muted" style="margin:0">Leave promo blank to keep the regular price.</p>
   </div>
   <div class="card"><h3 style="margin-bottom:10px">Studio rental rates (₱)</h3>
@@ -3472,6 +3475,7 @@ view.addEventListener("change", e=>{
   if(t.hasAttribute("data-calpick")){ if(t.value){ calWeek=sundayOf(t.value); render(); } return; }
   if(t.hasAttribute("data-mailurl")){ S.settings.mail.url=t.value.trim(); save(); render(); toast(mailReady()?"URL saved. Tap Test.":"That URL should end in /exec"); return; }
   if(t.hasAttribute("data-promo")){ S.settings.promo.active=t.checked; save(); render(); toast(t.checked?"Promo rates ON":"Regular rates ON"); return; }
+  if(t.hasAttribute("data-nonpromoends")){ S.settings.rates.nonMember.promoEnds=t.value; save(); render(); toast("Non-member promo end saved"); return; }
   if(t.hasAttribute("data-promoends")){ S.settings.promo.ends=t.value; save(); render(); toast("Promo end saved"); return; }
   if(t.dataset.rate){ const [k,f]=t.dataset.rate.split("."); S.settings.rates[k][f]= f==="promo"&&t.value===""?"":Math.max(0,+t.value||0); save(); render(); toast("Rate saved"); return; }
   if(t.dataset.rent){ S.settings.rental[t.dataset.rent]=Math.max(0,+t.value||0); save(); render(); toast("Rental rate saved"); return; }
