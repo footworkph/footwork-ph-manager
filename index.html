@@ -2122,8 +2122,6 @@ function guestPromo(){
   }
   if(memOn) lines.push(`Members pay only <b>${peso(+R.member.promo)}</b>${p.ends?` until ${esc(fmtDate(p.ends))}`:""}. Join for ${peso(+R.membershipFee.reg||500)} (valid ${MEMBER_MONTHS} months)!`);
   else lines.push(`Members save ${peso(Math.max(0,+R.nonMember.reg - +R.member.reg))} every session. Join for ${peso(+R.membershipFee.reg||500)} (valid ${MEMBER_MONTHS} months)!`);
-  const packs = S.settings.plans.filter(x=>x.for==="nonmember" && (!x.validTo || x.validTo>=today));
-  if(packs.length) lines.push(`Packages: ${packs.map(x=>`${+x.sessions?x.sessions+" sessions":"Unli"} ${peso(+x.price)} (${planWin(x)})`).join(" · ")}. Message our Facebook page Footwork PH to avail.`);
   return {head, lines};
 }
 function schedText(ws, guest){
