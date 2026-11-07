@@ -819,7 +819,7 @@ function bookingsCard(){
      <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Confirmed":"Waiting for payment"}</span></div>
      <div class="row" style="margin-top:8px">${b.proof_path?`<button type="button" class="btn sm ghost" data-act="bkProof" data-id="${b.id}">View proof</button>`:""}
      ${b.status==="pending"?`<button type="button" class="btn sm" data-act="bkConfirm" data-id="${b.id}">Paid · Confirm</button>${bkEmailOf(b)?`<button type="button" class="btn sm ghost" data-act="bkRemind" data-id="${b.id}">Email payment reminder</button>`:""}<button type="button" class="btn sm ghost" data-act="bkRemindCopy" data-id="${b.id}">Copy reminder</button>`:`<button type="button" class="btn sm ghost" data-act="bkMsg" data-id="${b.id}">Copy message</button><button type="button" class="btn sm ghost" data-act="bkResend" data-id="${b.id}">${bkEmailOf(b)?"Resend email":"No email"}</button><button type="button" class="btn sm ghost" data-act="bkUnconfirm" data-id="${b.id}">Undo confirm</button>`}
-     <button type="button" class="btn sm ghost" data-act="bkMove" data-id="${b.id}">Move / Rebook</button><button type="button" class="btn sm danger" data-act="bkCancel" data-id="${b.id}">Cancel booking</button></div></li>`;
+     <button type="button" class="btn sm ghost" data-act="bkMove" data-id="${b.id}">Reschedule</button><button type="button" class="btn sm danger" data-act="bkCancel" data-id="${b.id}">Cancel booking</button></div></li>`;
   return `<div class="card"><div class="row between"><h3 style="margin:0">Online bookings</h3><div class="row"><button type="button" class="btn sm ghost" data-act="bkCopy">Copy booking link</button><button type="button" class="btn sm ghost" data-act="bkRefresh" aria-label="Refresh bookings">↻</button></div></div>
    <p class="small muted" style="margin:6px 0 10px">Members book anytime with their Member ID. Guests (non-members) can book from 24 hours before class. Confirm each booking after you check the payment. Confirming a guest saves them as a non-member. Online booking closes 12 hours before class. Unpaid bookings with no uploaded proof are auto-cancelled 12 hours after booking.</p>
    ${pend.length?`<h3 style="margin:10px 0 6px">To confirm (${pend.length})</h3><ul class="list">${pend.map(row).join("")}</ul>`:`<p class="small muted" style="margin:6px 0">No bookings waiting for payment.</p>`}
@@ -856,23 +856,26 @@ function bkMoveDlg(id, back){
   const label = s => { const left = s.status==="full"?0:capOf(s)-slotsTaken(s), i=instr(s.instructorId);
     return `${new Date(s.date+"T00:00").toLocaleDateString("en-PH",{weekday:"short",month:"short",day:"numeric"})} · ${fmtTime(s.time)} · ${typeName(s)}${i?" · "+i.name:""} — ${left>0?left+" slot"+(left===1?"":"s")+" left":"FULL"}`; };
   const sameType = (S.sessions||[]).find(x=>x.id===b.class_id);
-  openDlg(back?"Edit booking":"Move / Rebook booking", `
+  openDlg(back?"Edit booking":"Reschedule booking", `
     <p class="small" style="margin:0 0 10px"><b>${esc(b.name)}</b> · Ref ${esc(b.ref)}<br><span class="muted">Now: ${esc(b.class_name||"Class")} · ${esc(bkWhen(b))}</span></p>
-    <label class="f">Move to class<select id="mv_ses">${opts.map(s=>{ const full=s.status==="full"||capOf(s)-slotsTaken(s)<=0;
-      return `<option value="${s.id}" ${full?"disabled":""}>${esc(label(s))}</option>`; }).join("")}</select></label>
+    <label class="f">Move to class<select id="mv_ses">${opts.map(s=>`<option value="${s.id}">${esc(label(s))}</option>`).join("")}</select></label>
+    <div id="mv_fullbox" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px">
+      <p class="small" style="margin:0 0 6px"><b>This class is full.</b></p>
+      <label class="row" style="gap:8px"><input type="checkbox" id="mv_over"> <span class="small">Add anyway (over the class limit)</span></label></div>
     <label class="row" style="gap:8px;margin-top:10px"><input type="checkbox" id="mv_mail" ${b.status==="confirmed"&&bkEmailOf(b)?"checked":""} ${bkEmailOf(b)?"":"disabled"}> <span class="small">Email the new schedule to the student${bkEmailOf(b)?"":" (no email on file)"}</span></label>
-    <p class="small muted" style="margin:10px 0 0">Payment and status stay the same${b.status==="confirmed"?" (stays Paid)":""}. The old slot opens up for others. Full classes can't be picked.</p>
+    <p class="small muted" style="margin:10px 0 0">Payment and status stay the same${b.status==="confirmed"?" (stays Paid)":""}. The old slot opens up for others. The 1-hour class reminder is reset for the new time.</p>
     <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px"><button type="button" class="btn sm danger" id="mv_cancel">Cancel this booking</button></div>`,
-  { saveLabel:"Move booking", onSave:()=>{
+  { saveLabel:"Reschedule", onSave:()=>{
       const sid=document.getElementById("mv_ses").value, s=(S.sessions||[]).find(x=>x.id===sid), mail=document.getElementById("mv_mail").checked;
       if(!s){ toast("Pick a class"); return false; }
-      const patch = { class_id:s.id, class_name:typeName(s), starts_at:sesStartISO(s),
-        note: ((b.note?b.note+" · ":"")+`Moved from ${bkWhen(b)} by studio`).slice(0,500), updated_at:new Date().toISOString() };
-      const btn=document.getElementById("dlgSave"); btn.disabled=true; btn.textContent="Moving…";
+      if(mvFull(s) && !document.getElementById("mv_over").checked){ toast("Class is full. Tick “Add anyway” to go over the limit."); return false; }
+      const patch = { class_id:s.id, class_name:typeName(s), starts_at:sesStartISO(s), remind_mail_at:null, remind_mail_status:null,
+        note: ((b.note?b.note+" · ":"")+`Rescheduled from ${bkWhen(b)} by studio`).slice(0,500), updated_at:new Date().toISOString() };
+      const btn=document.getElementById("dlgSave"); btn.disabled=true; btn.textContent="Saving…";
       sb.from("fw_bookings").update(patch).eq("id", b.id).then(async r=>{
-        if(r.error){ btn.disabled=false; btn.textContent="Move booking"; toast("Couldn't move. Check your internet."); return; }
+        if(r.error){ btn.disabled=false; btn.textContent="Reschedule"; toast("Couldn't reschedule. Check your internet."); return; }
         dlg.close();
-        let msg = "Moved to "+typeName(s)+" · "+bkWhen(Object.assign({},b,patch));
+        let msg = "Rescheduled to "+typeName(s)+" · "+bkWhen(Object.assign({},b,patch));
         if(mail){ const res = await bkSendConf(Object.assign({}, b, patch)); msg += res==="sent" ? " · email sent" : " · email failed, use Copy message"; }
         toast(msg); await loadBookings(); render(); if(back) back();
       });
@@ -882,8 +885,13 @@ function bkMoveDlg(id, back){
     if(!confirm(`Cancel ${b.name}'s booking for ${b.class_name||"class"} · ${bkWhen(b)}? The slot opens up for others.`)) return;
     dlg.close(); await bkSet(b.id,{status:"cancelled",cancelled_by:"studio"},"Booking cancelled"); if(back) back();
   };
-  if(sameType){ const sel=document.getElementById("mv_ses"), first=[...sel.options].find(o=>!o.disabled && ((S.sessions||[]).find(x=>x.id===o.value)||{}).typeId===sameType.typeId); if(first) sel.value=first.value; }
+  const sel=document.getElementById("mv_ses"), fullBox=document.getElementById("mv_fullbox");
+  const syncFull=()=>{ const s=(S.sessions||[]).find(x=>x.id===sel.value); fullBox.style.display=s&&mvFull(s)?"":"none"; document.getElementById("mv_over").checked=false; };
+  sel.onchange=syncFull;
+  if(sameType){ const first=[...sel.options].find(o=>{ const x=(S.sessions||[]).find(y=>y.id===o.value)||{}; return x.typeId===sameType.typeId && !mvFull(x); }); if(first) sel.value=first.value; }
+  syncFull();
 }
+const mvFull = s => s.status==="full" || capOf(s)-slotsTaken(s)<=0;
 /* ---------- booking confirmation (email + copyable message) ---------- */
 const BK_BRING = ["Water bottle","Small towel","Extra shirt","Comfortable rubber shoes"];
 function bkEmailOf(b){ const m=b.member_id&&member(b.member_id); return (b.email||(m&&m.email)||"").trim(); }
