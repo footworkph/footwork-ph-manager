@@ -2103,28 +2103,63 @@ function schedDays(ws){
   return DOW.map((x,i)=>addDays(ws,i)).map(d=>({d, items:list.filter(s=>s.date===d)})).filter(x=>x.items.length);
 }
 const longDay = d => new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long",month:"short",day:"numeric"}).toUpperCase();
-function schedText(ws){
+/* non-member reminder: book while it's discounted + member upsell + packages */
+function guestPromo(){
+  const R=S.settings.rates, p=S.settings.promo, today=todayISO();
+  const pOn = !!p.active && (!p.ends || today<=p.ends);
+  const nonOn = pOn && isSet(R.nonMember.promo) && (!R.nonMember.promoEnds || today<=R.nonMember.promoEnds);
+  const memOn = pOn && isSet(R.member.promo);
+  const nonEnd = R.nonMember.promoEnds || p.ends;
+  const zt = S.settings.classTypes.find(t=>/^zumba$/i.test(t.name||""));
+  const zNon = zt && isSet(zt.nonRate) ? +zt.nonRate : null;
+  const head = nonOn ? "BOOK WHILE IT'S DISCOUNTED!" : "BE A MEMBER & SAVE MORE!";
+  const lines = [];
+  if(nonOn){
+    lines.push(`Promo rate: <b>${peso(+R.nonMember.promo)}</b> per session${zNon!=null?` (Zumba ${peso(Math.min(+R.nonMember.promo,zNon))})`:""}${nonEnd?` until <b>${esc(fmtDate(nonEnd))}</b> only`:""}.`);
+    if(nonEnd) lines.push(`Starting ${esc(fmtDate(addDays(nonEnd,1)))}: ${peso(+R.nonMember.reg)} per session. Book your classes now!`);
+  } else {
+    lines.push(`Non-member rate: ${peso(+R.nonMember.reg)} per session${zNon!=null?` (Zumba ${peso(zNon)})`:""}.`);
+  }
+  if(memOn) lines.push(`Members pay only <b>${peso(+R.member.promo)}</b>${p.ends?` until ${esc(fmtDate(p.ends))}`:""}. Join for ${peso(+R.membershipFee.reg||500)} (valid ${MEMBER_MONTHS} months)!`);
+  else lines.push(`Members save ${peso(Math.max(0,+R.nonMember.reg - +R.member.reg))} every session. Join for ${peso(+R.membershipFee.reg||500)} (valid ${MEMBER_MONTHS} months)!`);
+  const packs = S.settings.plans.filter(x=>x.for==="nonmember" && (!x.validTo || x.validTo>=today));
+  if(packs.length) lines.push(`Packages: ${packs.map(x=>`${+x.sessions?x.sessions+" sessions":"Unli"} ${peso(+x.price)} (${planWin(x)})`).join(" · ")}. Message our Facebook page Footwork PH to avail.`);
+  return {head, lines};
+}
+function schedText(ws, guest){
+  if(guest){ const g=guestPromo(), cap=+S.settings.capacity||9;
+    return `FOOTWORK PH · CLASS SCHEDULE\n${weekLabel(ws)}\n\n` +
+      schedDays(ws).map(x=>longDay(x.d)+"\n"+x.items.map(s=>{ const i=instr(s.instructorId); return `• ${fmtTime(s.time)} – ${typeName(s)}${i?" ("+i.name+")":""}`; }).join("\n")).join("\n\n") +
+      `\n\n⏰ ${g.head}\n`+g.lines.map(l=>"• "+l.replace(/<[^>]+>/g,"")).join("\n")+
+      `\n\n📲 BOOK YOUR SLOT HERE:\n${GUEST_URL}\n\nHOW TO BOOK:\n1. Open the link above.\n2. Find your class and tap "Book".\n3. Type your name, mobile and Facebook name, then reserve your slot.\n4. Pay via ${PAY_LINE} and upload your payment screenshot to confirm your slot.\n\nBook in advance before going to the studio. Max ${cap} per class.\nClass times subject to change.`; }
   const cap=+S.settings.capacity||9;
   return `FOOTWORK PH · CLASS SCHEDULE\n${weekLabel(ws)}\n\n` +
     schedDays(ws).map(x=>longDay(x.d)+"\n"+x.items.map(s=>{ const i=instr(s.instructorId); return `• ${fmtTime(s.time)} – ${typeName(s)}${i?" ("+i.name+")":""}`; }).join("\n")).join("\n\n") +
     `\n\n📲 BOOK YOUR SLOT HERE:\n${BOOK_URL}\n\nHOW TO BOOK:\n1. Open the link above.\n2. Log in with your Member ID (on your card, e.g. FW-001) and your registered mobile number.\n3. Tap "Book" on the class you want, then "Confirm booking".\n4. Pay via GCash/Maya and upload your payment screenshot to confirm your slot.\n\nBook in advance before going to the studio. Max ${cap} per class.\nClass times subject to change.`;
 }
-function schedHtml(ws, note){
+function schedHtml(ws, note, guest){
   const cap=+S.settings.capacity||9, F="font-family:Arial,Helvetica,sans-serif;";
   const rows = schedDays(ws).map(x=>`<tr><td colspan="3" style="${F}padding:16px 16px 6px;font-size:14px;font-weight:800;color:#E8157F;letter-spacing:.5px">${esc(longDay(x.d))}</td></tr>`+
     x.items.map(s=>{ const i=instr(s.instructorId); return `<tr><td style="${F}padding:5px 8px 5px 16px;width:84px;font-size:14px;font-weight:700;color:#111;white-space:nowrap;vertical-align:top">${esc(fmtTime(s.time))}</td><td style="${F}padding:5px 8px;font-size:14px;font-weight:700;color:#111;vertical-align:top">${esc(typeName(s))}</td><td style="${F}padding:5px 16px 5px 8px;font-size:13px;color:#555;vertical-align:top">${i?esc(i.name):""}</td></tr>`; }).join("")).join("");
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;padding:0;background:#f3f0f5">
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;padding:0;background:#f3f0f5">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f0f5"><tr><td align="center" style="padding:20px 10px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:3px solid #FA1294;border-radius:14px;overflow:hidden">
 <tr><td style="${F}background:#111111;padding:22px 16px;text-align:center"><div style="font-size:30px;font-weight:900;font-style:italic;letter-spacing:1px"><span style="color:#ffffff">FOOT</span><span style="color:#FA1294">WORK</span> <span style="color:#B4FA2A">PH</span></div><div style="font-size:13px;font-weight:800;color:#B4FA2A;margin-top:6px;letter-spacing:2px">WEEKLY CLASS SCHEDULE</div><div style="font-size:17px;font-weight:700;color:#ffffff;margin-top:4px">${esc(weekLabel(ws))}</div></td></tr>
 ${note?`<tr><td style="${F}padding:18px 16px 2px;font-size:15px;line-height:1.5;color:#222">${esc(note).replace(/\n/g,"<br>")}</td></tr>`:""}
 <tr><td style="padding:4px 0 12px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table></td></tr>
+${guest?(g=>`<tr><td style="${F}padding:0 16px 14px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111111;border-radius:12px;border:3px solid #B4FA2A"><tr><td style="${F}padding:16px;color:#ffffff;font-size:14px;line-height:1.6"><div style="font-size:20px;font-weight:900;font-style:italic;color:#B4FA2A;margin-bottom:6px">⏰ ${esc(g.head)}</div>${g.lines.map(l=>`<div style="margin:3px 0">${l}</div>`).join("")}</td></tr></table></td></tr>`)(guestPromo()):""}
 <tr><td align="center" style="padding:6px 16px 18px"><a href="${BOOK_URL}" target="_blank" style="${F}display:inline-block;background:#111111;color:#B4FA2A;font-size:18px;font-weight:900;letter-spacing:1px;text-decoration:none;padding:16px 34px;border-radius:999px;border:3px solid #B4FA2A">BOOK YOUR SLOT</a><div style="${F}font-size:12px;color:#555;margin-top:8px;word-break:break-all">${BOOK_URL}</div></td></tr>
 <tr><td style="${F}padding:0 16px 18px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f3fa;border-radius:10px"><tr><td style="${F}padding:14px 16px;font-size:14px;line-height:1.6;color:#222"><div style="font-weight:800;color:#E8157F;margin-bottom:6px;letter-spacing:.5px">HOW TO BOOK</div>1. Tap <b>Book Your Slot</b> above.<br>2. Log in with your <b>Member ID</b> (on your card, e.g. FW-001) and your <b>registered mobile number</b>.<br>3. Tap <b>Book</b> on the class you want, then <b>Confirm booking</b>.<br>4. Pay via GCash/Maya and upload your payment screenshot to confirm your slot.</td></tr></table></td></tr>
 <tr><td style="${F}background:#FA1294;padding:14px 16px;font-size:14px;line-height:1.45;font-weight:700;color:#ffffff;text-align:center">Please book in advance before going to the studio. Max ${cap} per class. Show your membership card at the counter for your points and perks.</td></tr>
 <tr><td style="${F}padding:14px 16px;font-size:12px;line-height:1.5;color:#555;text-align:center">Class times subject to change.<br>${esc(FWC_FOOT)}</td></tr>
 </table></td></tr></table></body></html>`;
+  if(!guest) return html;
+  return html.split(BOOK_URL).join(GUEST_URL)
+    .replace('2. Log in with your <b>Member ID</b> (on your card, e.g. FW-001) and your <b>registered mobile number</b>.<br>3. Tap <b>Book</b> on the class you want, then <b>Confirm booking</b>.<br>4. Pay via GCash/Maya and upload your payment screenshot to confirm your slot.',
+      `2. Find your class and tap <b>Book</b>.<br>3. Type your name, mobile number and Facebook name, then reserve your slot.<br>4. Pay via <b>${PAY_LINE}</b> and upload your payment screenshot to confirm your slot.`)
+    .replace('Show your membership card at the counter for your points and perks.', guestPromo().head.startsWith("BOOK WHILE")?'Promo rates are for a limited time only, so book now!':'Become a member to save on every class!');
 }
+
 function copyText(text, msg){
   const ok=()=>toast(msg||"Copied"), bad=()=>toast("Can't copy on this browser");
   try{ navigator.clipboard.writeText(text).then(ok,bad); }catch(e){ bad(); }
@@ -2159,15 +2194,21 @@ function sendSchedDlg(){
     ${noMail.length?`<p class="small muted" style="margin:8px 0 0">No email saved, so they won't get it: ${noMail.map(m=>esc(m.name)).join(", ")}. Add their email in Students.</p>`:""}
     ${nons.length?`<details style="margin-top:10px"><summary class="small"><b>Also send to non-members (${nons.length})</b></summary>${nons.map(m=>rcp(m,false)).join("")}</details>`:""}
     <details style="margin-top:12px"><summary class="small"><b>Preview email</b></summary><iframe class="mailprev" id="ms_prev" sandbox="" title="Email preview"></iframe></details>
+    ${nons.length?`<details style="margin-top:8px"><summary class="small"><b>Preview non-member email</b> (with promo reminder)</summary><iframe class="mailprev" id="ms_prevn" sandbox="" title="Non-member email preview"></iframe></details>`:""}
     <p class="small muted" style="margin:10px 0 0">Each person gets their own email from your studio Gmail, so no one sees the others' addresses.</p>`,
   { saveLabel:"Send", onSave:()=>{
       const ids=[...document.querySelectorAll("#dlgBody [data-rcp]:checked")].map(x=>x.dataset.rcp);
-      const to=[...new Set(ids.map(id=>(member(id)?.email||"").trim().toLowerCase()).filter(e=>EMAIL_RX.test(e)))];
-      if(!to.length){ toast("Tick at least one person"); return false; }
+      const em = id => (member(id)?.email||"").trim().toLowerCase();
+      const isNon = id => { const m=member(id); return !m || m.type!=="member" || cardExpired(m); };
+      const toMem=[...new Set(ids.filter(id=>!isNon(id)).map(em).filter(e=>EMAIL_RX.test(e)))];
+      const toNon=[...new Set(ids.filter(isNon).map(em).filter(e=>EMAIL_RX.test(e)&&!toMem.includes(e)))];
+      if(!toMem.length && !toNon.length){ toast("Tick at least one person"); return false; }
       if(!navigator.onLine){ toast("You're offline. Connect to the internet first."); return false; }
       const btn=document.getElementById("dlgSave"); btn.disabled=true; btn.textContent="Sending…";
       const note=document.getElementById("ms_note").value.trim();
-      mailPost({to, subject:val("ms_subj")||("Footwork PH Class Schedule · "+weekLabel(ws)), html:schedHtml(ws,note), text:(note?note+"\n\n":"")+schedText(ws)})
+      const subj=val("ms_subj")||("Footwork PH Class Schedule · "+weekLabel(ws));
+      const send=(to,g)=>to.length?mailPost({to, subject:subj, html:schedHtml(ws,note,g), text:(note?note+"\n\n":"")+schedText(ws,g)}):Promise.resolve({ok:true,sent:0,failed:[]});
+      send(toMem,false).then(a=>{ if(!a||!a.ok) throw new Error((a&&a.error)||"Not sent"); return send(toNon,true).then(b=>{ if(!b||!b.ok) throw new Error((b&&b.error)||"Not sent to non-members"); return {ok:true, sent:(a.sent||0)+(b.sent||0), failed:[...(a.failed||[]),...(b.failed||[])]}; }); })
         .then(r=>{
           if(!r || !r.ok) throw new Error((r&&r.error)||"Not sent");
           S.settings.mail.sent[ws] = {at:new Date().toISOString(), n:r.sent};
@@ -2181,7 +2222,7 @@ function sendSchedDlg(){
   const setAll = on => withMail.forEach(m=>{ const c=body.querySelector(`[data-rcp="${m.id}"]`); if(c) c.checked=on; });
   const a=document.getElementById("ms_all"), n=document.getElementById("ms_none");
   if(a) a.onclick=()=>setAll(true); if(n) n.onclick=()=>setAll(false);
-  const drawPrev=()=>{ const f=document.getElementById("ms_prev"); if(f) f.srcdoc=schedHtml(ws, document.getElementById("ms_note").value.trim()); };
+  const drawPrev=()=>{ const n=document.getElementById("ms_note").value.trim(), f=document.getElementById("ms_prev"), g=document.getElementById("ms_prevn"); if(f) f.srcdoc=schedHtml(ws, n); if(g) g.srcdoc=schedHtml(ws, n, true); };
   drawPrev(); document.getElementById("ms_note").oninput=drawPrev;
   const upd=()=>{ const k=body.querySelectorAll("[data-rcp]:checked").length; document.getElementById("dlgSave").textContent = k?`Send to ${k}`:"Send"; };
   body.onchange=upd; upd();
