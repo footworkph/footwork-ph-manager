@@ -491,6 +491,15 @@ function seedRatesV3(st){
   add("unli_mem","Holiday Unli December · all classes (Member)","member",[],2000,0,30);
   st.ratesV3 = true;
 }
+/* one-time (Nov 8, 2026): November promo is members-only; December package validity */
+function seedRatesV4(st){
+  st.rates.nonMember.promo = "";
+  const set = (seed, o) => { const p=(st.plans||[]).find(x=>x.seed===seed); if(p) Object.assign(p,o); };
+  set("d5_non",{days:15}); set("d5_mem",{days:15});
+  set("d10_non",{days:30, validFrom:"2026-12-01", validTo:"2026-12-30"}); set("d10_mem",{days:30, validFrom:"2026-12-01", validTo:"2026-12-30"});
+  set("unli_non",{days:31, validFrom:"2026-12-01", validTo:"2026-12-31"}); set("unli_mem",{days:31, validFrom:"2026-12-01", validTo:"2026-12-31"});
+  st.ratesV4 = true;
+}
 function normalize(d){
   d = d || {};
   const o = {};
@@ -507,6 +516,7 @@ function normalize(d){
   st.plans = (st.plans||[]).map(p=>Object.assign({promoPrice:"", for:"member", typeIds:[]},p));
   if(!st.ratesV2) seedRatesV2(st);
   if(!st.ratesV3){ st._usedPlans = (Array.isArray(d.members)?d.members:[]).map(m=>m.planId).filter(Boolean); seedRatesV3(st); delete st._usedPlans; }
+  if(!st.ratesV4) seedRatesV4(st);
   if(!st.cap9){ st.capacity = 9; st.cap9 = true; }
   st.instructors = (st.instructors||[]).map(i=>Object.assign({pct:"",min:"",contact:"",notes:"",types:[]},i));
   st.mail = Object.assign({url:"", key:"", sent:{}}, ds.mail||{}); if(!st.mail.sent || typeof st.mail.sent!=="object") st.mail.sent = {};
@@ -1756,7 +1766,9 @@ const rate = (key, typeId) => {
 };
 /* packages: for members or non-members, one class type, counted only when used */
 const pkgUsed = m => S.sessions.reduce((a,s)=>a+(s.attendees||[]).filter(x=>x.memberId===m.id && x.pkg && (!m.startDate || s.date>=m.startDate)).length,0);
-const pkgExp = (m,p) => p && m.startDate && +p.days ? addDays(m.startDate, +p.days) : null;
+const pkgExp = (m,p) => { if(!p) return null; let e = m.startDate && +p.days ? addDays(m.startDate, +p.days) : null; if(p.validTo && (!e || p.validTo < e)) e = p.validTo; return e; };
+/* package validity text: fixed date window if set, else "use within N days" */
+const planWin = p => { const f=p.validFrom, t=p.validTo; if(f&&t) return `valid ${shortD(f)}–${shortD(t)}`; if(t) return `valid until ${shortD(t)}`; return `use within ${p.days} days`; };
 function pkgFor(m, s){
   const p = plan(m.planId); if(!p || !s) return null;
   const kind = m.type==="member" && !cardExpired(m) ? "member" : "nonmember";
@@ -1764,6 +1776,7 @@ function pkgFor(m, s){
   const types = m.planType ? [m.planType] : (p.typeIds||[]);
   if(types.length && !types.includes(s.typeId)) return null;
   if(m.startDate && s.date < m.startDate) return null;
+  if(p.validFrom && s.date < p.validFrom) return null;
   const exp = pkgExp(m,p); if(exp && s.date > exp) return null;
   if(+p.sessions && pkgUsed(m) >= +p.sessions) return null;
   const paid = +m.paid>0 ? +m.paid : planPrice(p);
@@ -2244,13 +2257,13 @@ const GUEST_URL = BOOK_URL + "#guest";
 const PAY_LINE = "GCash or Maya 0933-855-2646 (Anjeleen P.)";
 function nonInviteData(){
   const R=S.settings.rates, p=S.settings.promo, today=todayISO();
-  const promo = p.active && isSet(R.nonMember.promo) && (!p.ends || p.ends>=today) ? {non:+R.nonMember.promo, mem:+R.member.promo, ends:p.ends} : null;
+  const promo = p.active && (isSet(R.member.promo)||isSet(R.nonMember.promo)) && (!p.ends || p.ends>=today) ? {non:isSet(R.nonMember.promo)?+R.nonMember.promo:null, mem:isSet(R.member.promo)?+R.member.promo:null, ends:p.ends} : null;
   const regNon = t => isSet(t.nonRate)?+t.nonRate:+R.nonMember.reg, regMem = t => isSet(t.memRate)?+t.memRate:+R.member.reg;
   const rates = S.settings.classTypes.filter(t=>!t.free).map(t=>({name:t.name, non:regNon(t), mem:regMem(t)}));
   const tn = ids => (ids||[]).map(id=>ctype(id)?.name).filter(Boolean).join(" · ") || "Any class";
   const same = (a,b) => (a||[]).slice().sort().join()===(b||[]).slice().sort().join();
   const packs = S.settings.plans.filter(x=>x.for==="nonmember").map(x=>{ const m=S.settings.plans.find(y=>y.for==="member" && same(y.typeIds,x.typeIds) && +y.sessions===+x.sessions);
-    return {name:tn(x.typeIds), sessions:+x.sessions, days:+x.days, price:+x.price, mem:m?+m.price:null}; });
+    return {name:tn(x.typeIds), sessions:+x.sessions, days:+x.days, win:planWin(x), price:+x.price, mem:m?+m.price:null}; });
   return {promo, rates, packs, fee:+R.membershipFee.reg||500, perks:CARD_PERKS};
 }
 function nonInviteHtml(note){
@@ -2265,7 +2278,7 @@ function nonInviteHtml(note){
 <tr><td style="${F}background:#111111;padding:24px 16px;text-align:center"><div style="font-size:30px;font-weight:900;font-style:italic;letter-spacing:1px"><span style="color:#fff">FOOT</span><span style="color:${P}">WORK</span> <span style="color:${L}">PH</span></div><div style="font-size:13px;font-weight:800;color:${L};margin-top:6px;letter-spacing:2px">DANCE FITNESS STUDIO · BINANGONAN, RIZAL</div><div style="font-size:20px;font-weight:800;color:#fff;margin-top:10px">Your slot is waiting! 💃</div></td></tr>
 ${note?`<tr><td style="${F}padding:20px 20px 0;font-size:15px;line-height:1.55;color:#222">${esc(note).replace(/\n/g,"<br>")}</td></tr>`:""}
 <tr><td style="${F}padding:18px 20px 0;font-size:15px;line-height:1.55;color:#222">Thank you for registering with Footwork PH! Classes are <b>strictly by booking</b>, so reserve your slot online before you come to the studio.</td></tr>
-${d.promo?`<tr><td style="padding:18px 20px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111;border-radius:12px"><tr><td style="${F}padding:16px;text-align:center"><div style="font-size:12px;font-weight:800;color:${L};letter-spacing:2px">OPENING PROMO${d.promo.ends?` · UNTIL ${esc(fmtDate(d.promo.ends).toUpperCase())}`:""}</div><div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.non)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · all classes</span></div><div style="font-size:13px;color:${L};margin-top:4px">Members pay only ${peso(d.promo.mem)}</div></td></tr></table></td></tr>`:""}
+${d.promo?`<tr><td style="padding:18px 20px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111;border-radius:12px"><tr><td style="${F}padding:16px;text-align:center"><div style="font-size:12px;font-weight:800;color:${L};letter-spacing:2px">OPENING PROMO${d.promo.ends?` · UNTIL ${esc(fmtDate(d.promo.ends).toUpperCase())}`:""}</div>${d.promo.non!=null?`<div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.non)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · all classes</span></div>${d.promo.mem!=null?`<div style="font-size:13px;color:${L};margin-top:4px">Members pay only ${peso(d.promo.mem)}</div>`:""}`:`<div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.mem)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · MEMBERS ONLY</span></div><div style="font-size:13px;color:${L};margin-top:4px">Become a member for ${peso(d.fee)} to get the promo rate!</div>`}</td></tr></table></td></tr>`:""}
 <tr><td align="center" style="padding:22px 20px 6px">${btn}<div style="${F}font-size:12px;color:#555;margin-top:8px;word-break:break-all">${GUEST_URL}</div></td></tr>
 ${h3("HOW TO BOOK YOUR SLOT")}
 <tr><td style="${F}padding:0 20px;font-size:14px;line-height:1.65;color:#222">
@@ -2280,7 +2293,7 @@ ${h3("REGULAR RATES PER SESSION"+(d.promo&&d.promo.ends?` <span style="font-size
 ${d.rates.map(r=>`<tr>${td(`<b>${esc(r.name)}</b>`)}${td(peso(r.non))}${td(`<b style="color:${G}">${peso(r.mem)}</b>`)}</tr>`).join("")}</table></td></tr>
 ${d.packs.length?`${h3("PACKAGES")}
 <tr><td style="padding:0 20px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${th("PACKAGE")}${th("NON-MEMBER")}${th("MEMBER")}</tr>
-${d.packs.map(x=>`<tr>${td(`<b>${esc(x.name)}</b><br><span style="font-size:12px;color:#777">${x.sessions?x.sessions+" sessions":"Unlimited classes"} · use within ${x.days} days</span>`)}${td(peso(x.price))}${td(x.mem!=null?`<b style="color:${G}">${peso(x.mem)}</b>`:"—")}</tr>`).join("")}</table>
+${d.packs.map(x=>`<tr>${td(`<b>${esc(x.name)}</b><br><span style="font-size:12px;color:#777">${x.sessions?x.sessions+" sessions":"Unlimited classes"} · ${x.win}</span>`)}${td(peso(x.price))}${td(x.mem!=null?`<b style="color:${G}">${peso(x.mem)}</b>`:"—")}</tr>`).join("")}</table>
 <p style="${F}font-size:12px;color:#777;margin:8px 0 0">Sessions packages: same class type, for the named person only. Unli December: Dec 1–31, all classes. To buy a package, message our Facebook page <b>Footwork PH</b>.</p></td></tr>`:""}
 <tr><td style="padding:22px 20px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${L};border-radius:12px"><tr><td style="${F}padding:18px">
 <div style="font-size:22px;font-weight:900;font-style:italic;color:#111">BE A MEMBER &amp; SAVE MORE!</div>
@@ -2295,7 +2308,7 @@ ${d.packs.map(x=>`<tr>${td(`<b>${esc(x.name)}</b><br><span style="font-size:12px
 function nonInviteText(note){
   const d=nonInviteData();
   return (note?note+"\n\n":"")+`FOOTWORK PH · Your slot is waiting!\n\nClasses are strictly by booking. Reserve your slot here:\n${GUEST_URL}\n\n`+
-    (d.promo?`OPENING PROMO: ${peso(d.promo.non)} per session, all classes${d.promo.ends?` until ${fmtDate(d.promo.ends)}`:""}.\n\n`:"")+
+    (d.promo?(d.promo.non!=null?`OPENING PROMO: ${peso(d.promo.non)} per session, all classes`:`MEMBERS-ONLY PROMO: ${peso(d.promo.mem)} per session. Become a member for ${peso(d.fee)} to get it`)+`${d.promo.ends?` until ${fmtDate(d.promo.ends)}`:""}.\n\n`:"")+
     `HOW TO BOOK:\n1. Open the link above.\n2. Find your class and tap Book. Guest booking opens 24 hours before each class.\n3. Type your name, mobile and Facebook name. Tick I agree, then Reserve my slot.\n4. Pay via ${PAY_LINE}. Free classes need no payment.\n5. Send your booking and payment screenshots to our Facebook page Footwork PH.\n\n`+
     `RATES PER SESSION (non-member / member):\n`+d.rates.map(r=>`• ${r.name}: ${peso(r.non)} / ${peso(r.mem)}`).join("\n")+
     (d.packs.length?`\n\nPACKAGES (non-member / member):\n`+d.packs.map(x=>`• ${x.sessions?x.sessions+" sessions":"Unli December"} · ${x.name}: ${peso(x.price)}${x.mem!=null?" / "+peso(x.mem):""}`).join("\n"):"")+
@@ -2305,7 +2318,7 @@ function nonInviteText(note){
 /* ---------- booking link email for members ---------- */
 function memInviteHtml(note, m){
   const d=nonInviteData(), F="font-family:Arial,Helvetica,sans-serif;", P="#FA1294", L="#B4FA2A", G="#E8157F";
-  const mp = S.settings.plans.filter(x=>x.for==="member").map(x=>({name:(x.typeIds||[]).map(id=>ctype(id)?.name).filter(Boolean).join(" · ")||"Any class", sessions:+x.sessions, days:+x.days, price:+x.price}));
+  const mp = S.settings.plans.filter(x=>x.for==="member").map(x=>({name:(x.typeIds||[]).map(id=>ctype(id)?.name).filter(Boolean).join(" · ")||"Any class", sessions:+x.sessions, days:+x.days, win:planWin(x), price:+x.price}));
   const h3 = t => `<tr><td style="${F}padding:22px 20px 8px;font-size:16px;font-weight:900;color:${G};letter-spacing:.5px">${t}</td></tr>`;
   const td = (t,s="") => `<td style="${F}padding:7px 10px;font-size:14px;color:#111;border-bottom:1px solid #eee;${s}">${t}</td>`;
   const th = t => `<td style="${F}padding:6px 10px;font-size:11px;font-weight:800;color:#777;letter-spacing:.5px;border-bottom:2px solid #111">${t}</td>`;
@@ -2333,7 +2346,7 @@ ${h3("YOUR MEMBER RATES PER SESSION")}
 ${d.rates.map(r=>`<tr>${td(`<b>${esc(r.name)}</b>`)}${td(`<b style="color:${G}">${peso(r.mem)}</b>`)}${td(`<span style="color:#999;text-decoration:line-through">${peso(r.non)}</span>`)}</tr>`).join("")}</table></td></tr>
 ${mp.length?`${h3("MEMBER PACKAGES")}
 <tr><td style="padding:0 20px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${th("PACKAGE")}${th("MEMBER PRICE")}</tr>
-${mp.map(x=>`<tr>${td(`<b>${esc(x.name)}</b><br><span style="font-size:12px;color:#777">${x.sessions?x.sessions+" sessions":"Unlimited classes"} · use within ${x.days} days</span>`)}${td(`<b style="color:${G}">${peso(x.price)}</b>`)}</tr>`).join("")}</table>
+${mp.map(x=>`<tr>${td(`<b>${esc(x.name)}</b><br><span style="font-size:12px;color:#777">${x.sessions?x.sessions+" sessions":"Unlimited classes"} · ${x.win}</span>`)}${td(`<b style="color:${G}">${peso(x.price)}</b>`)}</tr>`).join("")}</table>
 <p style="${F}font-size:12px;color:#777;margin:8px 0 0">Sessions packages: same class type, for you only. Unli December: Dec 1–31, all classes. To buy a package, message our Facebook page <b>Footwork PH</b>.</p></td></tr>`:""}
 <tr><td style="padding:22px 20px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${L};border-radius:12px"><tr><td style="${F}padding:18px">
 <div style="font-size:20px;font-weight:900;font-style:italic;color:#111">YOUR MEMBER PERKS</div>
@@ -2667,7 +2680,7 @@ function vSettings(){
     <p class="small muted" style="margin:0">Default for everyone. You can set a different split per instructor or per class.</p>
   </div>
   <div class="card"><div class="row between" style="margin-bottom:8px"><h3>Member packages</h3><button class="btn sm" data-act="newPlan">Add package</button></div>
-    ${st.plans.length?`<ul class="list">${st.plans.map(p=>`<li><div class="row between"><div><b>${esc(p.name)}</b><div class="small muted">${p.for==="nonmember"?"Non-members":p.for==="member"?"Members":"Anyone"}${(p.typeIds||[]).length?" · "+esc(p.typeIds.map(id=>ctype(id)?.name).filter(Boolean).join(", ")):""}</div><div class="small muted">${peso(p.price)}${isSet(p.promoPrice)?` · promo ${peso(p.promoPrice)}`:""} · ${+p.sessions?p.sessions+" sessions":"Unlimited"} · ${p.days} days</div></div><button class="btn sm ghost" data-act="editPlan" data-id="${p.id}">Edit</button></div></li>`).join("")}</ul>`:`<p class="small muted">Example: 8-session monthly, unlimited monthly.</p>`}
+    ${st.plans.length?`<ul class="list">${st.plans.map(p=>`<li><div class="row between"><div><b>${esc(p.name)}</b><div class="small muted">${p.for==="nonmember"?"Non-members":p.for==="member"?"Members":"Anyone"}${(p.typeIds||[]).length?" · "+esc(p.typeIds.map(id=>ctype(id)?.name).filter(Boolean).join(", ")):""}</div><div class="small muted">${peso(p.price)}${isSet(p.promoPrice)?` · promo ${peso(p.promoPrice)}`:""} · ${+p.sessions?p.sessions+" sessions":"Unlimited"} · ${planWin(p)}</div></div><button class="btn sm ghost" data-act="editPlan" data-id="${p.id}">Edit</button></div></li>`).join("")}</ul>`:`<p class="small muted">Example: 8-session monthly, unlimited monthly.</p>`}
   </div>
   <div class="card"><h3 style="margin-bottom:10px">Studio</h3>
     <label class="f">Studio name<input data-set="studioName" value="${esc(st.studioName)}"></label>
@@ -3368,12 +3381,15 @@ function planDlg(p){
       <label class="f">Promo price (₱)<input type="number" min="0" id="p_promo" value="${p.promoPrice}" placeholder="Optional"></label>
       <label class="f">Sessions included (0 = unlimited)<input type="number" min="0" id="p_ses" value="${p.sessions}"></label>
       <label class="f">Valid for (days)<input type="number" min="1" id="p_days" value="${p.days}"></label>
-    </div>`,
+      <label class="f">Valid from (optional)<input type="date" id="p_from" value="${p.validFrom||""}"></label>
+      <label class="f">Valid until (optional)<input type="date" id="p_to" value="${p.validTo||""}"></label>
+    </div>
+    <p class="small muted">Use the dates for fixed windows like Dec 1–30. Sessions before "Valid from" or after "Valid until" are not covered.</p>`,
   { onSave:()=>{
       if(!val("p_name")){ toast("Enter a package name"); return false; }
       const pr=val("p_promo");
       Object.assign(p,{name:val("p_name"), price:+val("p_price")||0, promoPrice:pr===""?"":+pr, sessions:+val("p_ses")||0, days:+val("p_days")||30,
-        for:val("p_for"), typeIds:[...document.querySelectorAll('input[name="p_type"]:checked')].map(x=>x.value)});
+        validFrom:val("p_from"), validTo:val("p_to"), for:val("p_for"), typeIds:[...document.querySelectorAll('input[name="p_type"]:checked')].map(x=>x.value)});
       if(isNew) S.settings.plans.push(p);
     },
     onDelete: isNew?null:()=>{ S.settings.plans=S.settings.plans.filter(x=>x.id!==p.id); } });
