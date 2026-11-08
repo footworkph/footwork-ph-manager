@@ -195,7 +195,12 @@ const ERR = {
   too_late: "It's less than 12 hours before class, so you can't cancel online. Please message our Facebook page.",
   no_booking: "We couldn't find that booking.",
   bad_details: "Please check your details and try again.",
-  network: "No connection. Check your internet and try again."
+  network: "No connection. Check your internet and try again.",
+  guest_used: "You already used your free guest for this membership. It can only be used once.",
+  guest_is_you: "Please enter your friend's own mobile number, not yours.",
+  guest_already: "Your friend already has a slot in this class.",
+  book_first: "Book your own slot in this class first, then add your free guest.",
+  not_agreed: "Please tick the box to agree."
 };
 
 async function rpc(fn, args){
@@ -251,7 +256,7 @@ function render(){
     $("schedList").innerHTML = html || `<div class="empty">No ${esc(typeFilter)} classes in the next 2 weeks.</div>`;
   }
   // my bookings
-  $("mineView").innerHTML = mine.length ? `<h2>Your upcoming classes</h2>` + mine.map(s=>{
+  $("mineView").innerHTML = fgBanner() + (mine.length ? `<h2>Your upcoming classes</h2>` + mine.map(s=>{
     const st = s.mine==="confirmed" ? `<span class="pill lime">Confirmed ✓</span>` : `<span class="pill warn">Waiting for payment</span>`;
     const ft = fmtTime(s.time);
     return `<div class="card" style="margin-bottom:10px">
@@ -260,8 +265,67 @@ function render(){
       <div class="row" style="justify-content:flex-start;margin-top:10px">
         ${s.mine==="pending"?`<button class="btn sm" data-proof="${esc(s.id)}">${s.proof_sent?"Send another proof":"Upload proof of payment"}</button>`:""}
         ${!s.free && (s.mine==="confirmed" || s.proof_sent) ? `<span class="small muted">Paid · non-refundable, no cancellation</span>` : s.open?`<button class="btn ghost sm" data-cancel="${esc(s.id)}">Cancel booking</button>`:`<span class="small muted">Can't cancel online (less than ${data.cutoffHours} hours to class)</span>`}
-      </div></div>`;
-  }).join("") : `<div class="empty card"><b>No bookings yet</b>Pick a class from the schedule to book your slot.</div>`;
+      </div>${fgRow(s)}</div>`;
+  }).join("") : `<div class="empty card"><b>No bookings yet</b>Pick a class from the schedule to book your slot.</div>`);
+}
+/* ---------- free guest (1 per membership term) ---------- */
+function fgBanner(){
+  const g = data.freeGuest;
+  if(g) return `<div class="card" style="margin-top:14px;border-color:var(--lime)">
+    <div style="font-weight:700;font-size:18px">🎟️ Free guest used</div>
+    <p class="small muted" style="margin:4px 0 0"><b style="color:var(--ink)">${esc(g.name)}</b> · ${esc(g.class||"Class")} · ${esc(fmtWhen(g.starts_at))}<br>Ref <b style="color:var(--lime)">${esc(g.ref)}</b> · ${esc(data.member.memberNo)} - free guest</p>
+    <p class="small muted" style="margin:6px 0 0">Your free guest is used for this membership. You get a new one when you renew.</p></div>`;
+  return `<div class="card neon" style="margin-top:14px">
+    <div style="font-weight:700;font-size:18px">🎟️ Bring a friend for FREE</div>
+    <p class="small muted" style="margin:4px 0 0">Your membership comes with <b style="color:var(--ink)">1 free guest</b>. Book your own class first, then tap <b style="color:var(--ink)">Add free guest</b> on that class below. <b style="color:var(--ink)">One time only</b> per membership.</p></div>`;
+}
+function fgRow(s){
+  const g = data.freeGuest;
+  if(g && g.class_id===s.id) return `<p class="small" style="margin:10px 0 0;color:var(--lime);font-weight:700">🎟️ Your free guest: ${esc(g.name)}</p>`;
+  if(g || s.checked_in || s.free) return "";
+  const left = s.capacity - s.taken;
+  if(!s.open || !data.open || left<=0) return "";
+  return `<div style="margin-top:10px"><button class="btn sm pink" data-fguest="${esc(s.id)}">🎟️ Add free guest</button></div>`;
+}
+function guestSheet(s){
+  const ft = fmtTime(s.time);
+  openSheet(`<h3>Add your free guest</h3>
+    <p class="muted">${esc(s.class)} · ${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}${s.coach?` · ${esc(s.coach)}`:""}</p>
+    <div class="rules" style="border-color:var(--pink)">
+      <div style="font-weight:700;margin-bottom:6px">🎟️ One time only</div>
+      <ul style="margin:0;padding-left:18px">
+        <li>You can add <b>1 free guest per membership</b>. Once added, you <b>can't add another</b> or change it.</li>
+        <li>Your friend joins <b>this class with you</b>. The free pass can't be moved to another day.</li>
+        <li>Your friend <b>signs a short waiver</b> at the counter before class.</li>
+      </ul></div>
+    <label for="fgName">Friend's full name</label><input type="text" id="fgName" autocomplete="off" maxlength="80">
+    <label for="fgMob">Friend's mobile number</label><input type="tel" id="fgMob" inputmode="tel" placeholder="09xx xxx xxxx" autocomplete="off">
+    <label for="fgFb">Friend's Facebook name</label><input type="text" id="fgFb" autocomplete="off" maxlength="80">
+    <label class="check" style="color:var(--ink)"><input type="checkbox" id="fgAgree"> I understand this is my one free guest for this membership.</label>
+    <div class="err" id="fgErr" hidden></div>
+    <button class="btn pink block" id="fgGo">Add free guest</button>
+    <button class="btn ghost block" style="margin-top:10px" data-close>Not now</button>`);
+  const err = t => { $("fgErr").textContent=t; $("fgErr").hidden=false; };
+  $("fgGo").onclick = async ()=>{
+    const name=$("fgName").value.trim(), mob=$("fgMob").value.trim(), fb=$("fgFb").value.trim();
+    if(name.length<2) return err("Please type your friend's full name.");
+    if(mob.replace(/\D/g,"").length<10) return err("Please type your friend's full mobile number.");
+    if(fb.length<2) return err("Please type your friend's Facebook name.");
+    if(!$("fgAgree").checked) return err(ERR.not_agreed);
+    $("fgGo").disabled=true; $("fgGo").innerHTML=`<span class="spin"></span>`;
+    const r = await rpc("fw_member_free_guest", {p_no:cred.no, p_mobile:cred.mob, p_session:s.id, p_name:name, p_guest_mobile:mob, p_fb:fb, p_agreed:true});
+    if(!r.ok){ err(ERR[r.error]||ERR.network); $("fgGo").disabled=false; $("fgGo").textContent="Add free guest"; if(["guest_used","full","closed","no_session","book_first"].includes(r.error)) load(true); return; }
+    await load(true);
+    openSheet(`<h3>Free guest added! 🎉</h3>
+      <p class="muted"><b style="color:var(--ink)">${esc(name)}</b> is booked for ${esc(s.class)} · ${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}.</p>
+      <p class="small muted" style="margin-top:12px">Guest booking ref</p><div class="ref">${esc(r.ref)}</div>
+      <ul class="rules">
+        <li><span class="pill lime">Confirmed ✓</span> Free. No payment needed.</li>
+        <li>Recorded as <b>${esc(data.member.memberNo)} - free guest</b>.</li>
+        <li>Send this ref to your friend. They should come <b>15 minutes early</b> and sign the waiver at the counter.</li>
+      </ul>
+      <button class="btn block" style="margin-top:6px" data-close>Done</button>`);
+  };
 }
 function card(s){
   const left = Math.max(0, s.capacity - s.taken), pct = Math.min(100, Math.round(s.taken/s.capacity*100));
@@ -391,11 +455,11 @@ function cancelSheet(s){
 
 /* ---------- events ---------- */
 document.addEventListener("click", e=>{
-  const b = e.target.closest("[data-book],[data-proof],[data-cancel],[data-type],[data-tab]"); if(!b || !data) return;
+  const b = e.target.closest("[data-book],[data-proof],[data-cancel],[data-type],[data-tab],[data-fguest]"); if(!b || !data) return;
   if(b.dataset.tab){ tab=b.dataset.tab; render(); return; }
   if(b.hasAttribute("data-type")){ typeFilter=b.dataset.type; render(); return; }
-  const id = b.dataset.book || b.dataset.proof || b.dataset.cancel, s = data.sessions.find(x=>x.id===id); if(!s) return;
-  if(b.dataset.book) bookSheet(s); else if(b.dataset.proof) paySheet(s, null, false); else cancelSheet(s);
+  const id = b.dataset.book || b.dataset.proof || b.dataset.cancel || b.dataset.fguest, s = data.sessions.find(x=>x.id===id); if(!s) return;
+  if(b.dataset.fguest) guestSheet(s); else if(b.dataset.book) bookSheet(s); else if(b.dataset.proof) paySheet(s, null, false); else cancelSheet(s);
 });
 $("loginForm").addEventListener("submit", async e=>{
   e.preventDefault(); loginErr("");

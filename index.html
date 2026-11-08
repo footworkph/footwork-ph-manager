@@ -804,7 +804,7 @@ async function loadBookings(){
   if(!sb || !sbUser) return;
   try{
     const since = new Date(Date.now()-36*3600*1000).toISOString();
-    const r = await sb.from("fw_bookings").select("id,ref,class_id,class_name,starts_at,name,member_no,member_id,contact,email,note,is_member,status,pay_ref,proof_path,created_at,paid_at,confirmed_at")
+    const r = await sb.from("fw_bookings").select("id,ref,class_id,class_name,starts_at,name,member_no,member_id,contact,email,note,is_member,status,pay_ref,proof_path,created_at,paid_at,confirmed_at,pay_method,amount,guest_of")
       .gte("starts_at", since).in("status",["pending","confirmed"]).order("starts_at");
     if(r.error) return;
     const before = JSON.stringify(BK); BK = r.data||[];
@@ -847,9 +847,9 @@ function bookingsCard(){
   if(!sbUser) return "";
   const byPay = (a,b)=> (bkPayAt(a)?0:1)-(bkPayAt(b)?0:1) || new Date(bkPayAt(a)||a.created_at)-new Date(bkPayAt(b)||b.created_at);
   const pend = BK.filter(b=>b.status==="pending").sort(byPay), conf = BK.filter(b=>b.status==="confirmed");
-  const row = b => `<li><div class="row between"><div style="min-width:0"><b>${esc(b.name)}</b> ${b.is_member?`<span class="pill pink">${esc(b.member_no||"")}</span>`:`<span class="pill">Guest</span><div class="small muted">${esc(b.contact||"")}${b.note?" · "+esc(String(b.note).replace(/^FB:\s*/,"FB: ")):""}</div>`}
+  const row = b => `<li><div class="row between"><div style="min-width:0"><b>${esc(b.name)}</b> ${b.is_member?`<span class="pill pink">${esc(b.member_no||"")}</span>`:`${bkFreeGuest(b)?bkFreeTag(b):`<span class="pill">Guest</span>`}<div class="small muted">${esc(b.contact||"")}${b.note?" · "+esc(String(b.note).replace(/^FB:\s*/,"FB: ")):""}</div>`}
      <div class="small">${esc(b.class_name||"Class")} · ${esc(bkWhen(b))}</div>
-     <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${b.proof_path?"":" · No screenshot yet"}${b.paid_at?` · <b>Paid ${esc(bkStamp(b.paid_at))}</b>`:""}</div>${b.status==="pending"?`<div class="small muted">${bkEmailOf(b)?"Email: "+esc(bkEmailOf(b)):"No email on file"}${bkRemAt(b)?` · <b>Reminder sent ${esc(bkRemAt(b))}</b>`:""}</div>`:""}</div>
+     <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${bkFreeGuest(b)?" · <b>Free · no payment needed</b>":b.proof_path?"":" · No screenshot yet"}${b.paid_at?` · <b>Paid ${esc(bkStamp(b.paid_at))}</b>`:""}</div>${b.status==="pending"?`<div class="small muted">${bkEmailOf(b)?"Email: "+esc(bkEmailOf(b)):"No email on file"}${bkRemAt(b)?` · <b>Reminder sent ${esc(bkRemAt(b))}</b>`:""}</div>`:""}</div>
      <span class="pill ${b.status==="confirmed"?"ok":bkPast(b)?"bad":"warn"}">${b.status==="confirmed"?"Confirmed":bkPast(b)?"Class done · unpaid":"Waiting for payment"}</span></div>
      ${bkPast(b)?`<div class="small" style="margin-top:6px;color:#c0392b"><b>⏱ Class date has passed.</b> Buttons are locked.</div>`:""}<div class="row" style="margin-top:8px">${bkLock(b,`${b.proof_path?`<button type="button" class="btn sm ghost" data-act="bkProof" data-id="${b.id}">View proof</button>`:""}
      ${b.status==="pending"?`<button type="button" class="btn sm" data-act="bkConfirm" data-id="${b.id}">Paid · Confirm</button>${bkEmailOf(b)?`<button type="button" class="btn sm ghost" data-act="bkRemind" data-id="${b.id}">Email payment reminder</button>`:""}<button type="button" class="btn sm ghost" data-act="bkRemindCopy" data-id="${b.id}">Copy reminder</button>`:`<button type="button" class="btn sm ghost" data-act="bkMsg" data-id="${b.id}">Copy message</button><button type="button" class="btn sm ghost" data-act="bkResend" data-id="${b.id}">${bkEmailOf(b)?"Resend email":"No email"}</button><button type="button" class="btn sm ghost" data-act="bkUnconfirm" data-id="${b.id}">Undo confirm</button>`}
@@ -868,11 +868,18 @@ function memberMatch(p){
   const mems=S.members.filter(x=>x.type==="member" && x.id!==p.id);
   return mems.find(x=>d && digits10(x.contact)===d) || mems.find(x=>e && String(x.email||"").trim().toLowerCase()===e) || mems.find(x=>n && nameKey(x.name)===n) || null;
 }
+const bkFreeGuest = b => !!(b && b.guest_of);
+/* free guests pay nothing, but count as a sale at the member rate so coaches still earn */
+const fgCredit = s => Math.round(rate("member", s && s.typeId)*100)/100;
+const bkFreeTag = b => `<span class="pill ok">${esc(b.guest_of)} - free guest</span>`;
 function guestToNonMember(b){
   const digits = digits10;
-  let m = memberMatch(b) || S.members.find(x=>digits(x.contact) && digits(x.contact)===digits(b.contact));
+  const fg = bkFreeGuest(b), host = fg ? S.members.find(x=>x.memberNo===b.guest_of) : null;
+  /* free guests: match only by their own mobile number, never the member who invited them */
+  let m = fg ? S.members.find(x=>x!==host && digits(x.contact) && digits(x.contact)===digits(b.contact))
+             : (memberMatch(b) || S.members.find(x=>digits(x.contact) && digits(x.contact)===digits(b.contact)));
   if(!m){
-    m = {id:uid(), name:b.name, contact:b.contact||"", email:b.email||"", type:"nonmember", notes:`Booked online as guest (${b.ref})${b.note?" · "+b.note:""}`, startDate:todayISO()};
+    m = {id:uid(), name:b.name, contact:b.contact||"", email:fg?"":(b.email||""), type:"nonmember", notes:fg?`${b.guest_of} - free guest (${b.ref})${b.note?" · "+b.note.replace(/^.*?·\s*/,""):""}`:`Booked online as guest (${b.ref})${b.note?" · "+b.note:""}`, startDate:todayISO()};
     S.members.push(m); save();
   }
   return m.id;
@@ -1890,7 +1897,7 @@ function expectedCalc(s){
     let m = b.member_id && member(b.member_id);
     if(m && m.type!=="member") m = memberMatch(m) || memberMatch(b) || m;
     const kind = m ? (m.type==="member"?"member":"nonmember") : (b.is_member?"member":"nonmember");
-    const amt = isSet(b.amount) && +b.amount===0 ? 0 : (m ? priceFor(m, s, kind).amount : rate(kind==="member"?"member":"nonMember", s.typeId));
+    const amt = bkFreeGuest(b) ? fgCredit(s) : isSet(b.amount) && +b.amount===0 ? 0 : (m ? priceFor(m, s, kind).amount : rate(kind==="member"?"member":"nonMember", s.typeId));
     return {memberId:b.member_id||("bk_"+b.id), kind, amount:Math.round((+amt||0)*100)/100};
   });
   const c = sessionCalc(Object.assign({}, s, {attendees:(s.attendees||[]).concat(extra)}));
@@ -2966,13 +2973,13 @@ function sessionDlg(s, preset){
   const drawSum = ()=>{ const c=sessionCalc(s), e=expectedCalc(s); document.getElementById("s_sum").innerHTML = (e.pending?`<p class="small" style="margin:10px 0 0"><b>Expected with paid bookings</b> · ${slotsTaken(s)}/${capOf(s)} pax · Sales <b>${peso(e.gross)}</b></p>${splitBar(e.inst,e.biz,e.pct,e)}<p class="small muted" style="margin:10px 0 0">Actual (checked in only)</p>`:"") + `<p class="small" style="margin:10px 0 0">${slotsTaken(s)}/${capOf(s)} pax (${s.attendees.length} checked in) · Sales <b>${peso(c.gross)}</b></p>${splitBar(c.inst,c.biz,c.pct,c)}${s.attendees.length?`<button type="button" class="btn sm ghost" data-ackr style="margin-top:10px">🖨 Print coach receipt</button>`:""}`; };
   const drawAtt = ()=>{
     const box=document.getElementById("s_att");
-    box.innerHTML = s.attendees.length ? s.attendees.map((a,i)=>`<div class="att"><span class="nm">${esc(member(a.memberId)?.name||newNon.find(n=>n.id===a.memberId)?.name||a.name)} <button type="button" class="pill ${a.kind==="nonmember"?"":"pink"}" data-kind="${i}" title="Tap to switch member / non-member" style="border:0;cursor:pointer;font:inherit">${a.kind==="nonmember"?"non-member":"member"} ⇄</button>${a.pkg?` <span class="pill ok">package</span>`:""}</span><input type="number" min="0" aria-label="Amount paid" data-i="${i}" value="${a.amount}"><button type="button" class="x" data-rm="${i}" aria-label="Remove">✕</button></div>`).join("") : `<p class="small muted">No one checked in yet.</p>`;
+    box.innerHTML = s.attendees.length ? s.attendees.map((a,i)=>`<div class="att"><span class="nm">${esc(member(a.memberId)?.name||newNon.find(n=>n.id===a.memberId)?.name||a.name)} <button type="button" class="pill ${a.kind==="nonmember"?"":"pink"}" data-kind="${i}" title="Tap to switch member / non-member" style="border:0;cursor:pointer;font:inherit">${a.kind==="nonmember"?"non-member":"member"} ⇄</button>${a.pkg?` <span class="pill ok">package</span>`:""}${a.freeGuestOf?` <span class="pill ok" title="Guest paid nothing. Amount is counted for coach commission only.">${esc(a.freeGuestOf)} - free guest · not collected</span>`:""}</span><input type="number" min="0" aria-label="Amount paid" data-i="${i}" value="${a.amount}"><button type="button" class="x" data-rm="${i}" aria-label="Remove">✕</button></div>`).join("") : `<p class="small muted">No one checked in yet.</p>`;
     box.querySelectorAll("input[data-i]").forEach(inp=>inp.oninput=()=>{ s.attendees[+inp.dataset.i].amount=+inp.value||0; drawSum(); });
     box.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{ s.attendees.splice(+b.dataset.rm,1); drawAtt(); });
     box.querySelectorAll("[data-kind]").forEach(b=>b.onclick=()=>{ const a=s.attendees[+b.dataset.kind]; a.kind = a.kind==="member"?"nonmember":"member";
       const m=member(a.memberId)||newNon.find(n=>n.id===a.memberId); s.typeId=val("s_type");
       const pr = m ? priceFor(m, s, a.kind) : {amount:rate(a.kind==="member"?"member":"nonMember", s.typeId), pkg:false};
-      a.amount=Math.round(pr.amount*100)/100; if(pr.pkg) a.pkg=true; else delete a.pkg;
+      a.amount=a.freeGuestOf?fgCredit(s):Math.round(pr.amount*100)/100; if(pr.pkg&&!a.freeGuestOf) a.pkg=true; else delete a.pkg;
       drawAtt(); toast(`Changed to ${a.kind==="member"?"member":"non-member"} · ${peso(a.amount)} — tap Save`); });
     document.querySelectorAll("#s_bk [data-bkadd]").forEach(b=>{ const done = !!b.dataset.bkadd && s.attendees.some(a=>a.memberId===b.dataset.bkadd);
       b.textContent = done ? "✓ Checked in" : "Check in";
@@ -2996,7 +3003,7 @@ function sessionDlg(s, preset){
     <div class="f" style="margin:4px 0 12px"><span>Online booking for this class</span>
       <div class="row" id="s_bst" style="margin-top:6px;gap:6px">${[["","Open"],["full","Mark fully booked"],["cancelled","Mark cancelled"]].map(([v,l])=>`<button type="button" class="btn sm ${(s.status||"")===v?(v==="cancelled"?"danger":""):"ghost"}" data-bst="${v}" ${(s.status||"")===v&&v==="cancelled"?'style="background:var(--bad);color:#fff"':""}>${l}</button>`).join("")}</div>
       <p class="small muted" id="s_bstnote" style="margin:6px 0 0"></p></div>
-    ${bkFor(s.id).length?`<div class="row between" style="margin:8px 0 6px"><h3 style="margin:0">Booked online (${bkFor(s.id).length})</h3>${bkFor(s.id).some(b=>b.status==="confirmed")?`<button type="button" class="btn sm ghost" id="s_sheet">🖨 Sign-in sheet</button>`:""}</div><div id="s_bk" style="margin-bottom:10px">${bkFor(s.id).map(b=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span><b>${esc(b.name)}</b> <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Paid":"Not paid yet"}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" class="btn sm ghost" data-bkedit="${b.id}">Edit</button><button type="button" class="btn sm ghost" data-bkadd="${esc(b.member_id||"")}">Check in</button></span></div>`).join("")}</div>`:""}
+    ${bkFor(s.id).length?`<div class="row between" style="margin:8px 0 6px"><h3 style="margin:0">Booked online (${bkFor(s.id).length})</h3>${bkFor(s.id).some(b=>b.status==="confirmed")?`<button type="button" class="btn sm ghost" id="s_sheet">🖨 Sign-in sheet</button>`:""}</div><div id="s_bk" style="margin-bottom:10px">${bkFor(s.id).map(b=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span><b>${esc(b.name)}</b> ${bkFreeGuest(b)?bkFreeTag(b):`<span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Paid":"Not paid yet"}</span>`}</span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" class="btn sm ghost" data-bkedit="${b.id}">Edit</button><button type="button" class="btn sm ghost" data-bkadd="${esc(b.member_id||"")}" data-bkid="${esc(b.id)}">Check in</button></span></div>`).join("")}</div>`:""}
     <h3 style="margin:8px 0 6px">Attendance</h3>
     <div class="row" style="margin-bottom:8px">${sel("s_addm","Add a member…",S.members.filter(m=>m.type==="member").sort(byName).map(m=>`<option value="${m.id}">${esc(memLabel(m))}</option>`).join(""))}</div>
     <div class="row" style="margin-bottom:8px">${sel("s_addn","Add a non-member…",S.members.filter(m=>m.type==="nonmember").sort(byName).map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join(""))}<button type="button" class="btn sm ghost" id="s_walk">New walk-in</button></div>
@@ -3016,7 +3023,9 @@ function sessionDlg(s, preset){
     if(!bkFor(s.id).some(b=>b.member_id===m.id) && slotsTaken(s)>=capOf(s)) toast("Class is fully booked (max "+capOf(s)+" pax).");
     s.typeId = val("s_type"); s.date = val("s_date") || s.date;
     const pr = priceFor(m, s, kind);
-    s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind, amount:Math.round(pr.amount*100)/100}, pr.pkg?{pkg:true}:{})); drawAtt(); toast(m.name+" checked in ✓ — tap Save to keep it");
+    const bkx = bkFor(s.id).find(b=>b.member_id===m.id), freeBk = bkx && isSet(bkx.amount) && +bkx.amount===0;
+    s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind, amount:bkFreeGuest(bkx)?fgCredit(s):freeBk?0:Math.round(pr.amount*100)/100}, pr.pkg&&!freeBk?{pkg:true}:{}, bkFreeGuest(bkx)?{freeGuestOf:bkx.guest_of}:{})); drawAtt();
+    toast(m.name+" checked in ✓"+(bkFreeGuest(bkx)?` · ${bkx.guest_of} - free guest · counted ${peso(fgCredit(s))} for coach`:freeBk?" · free · ₱0":"")+" — tap Save to keep it");
   };
   { const sh=document.getElementById("s_sheet"); if(sh) sh.onclick=()=>printSheet(s.id); }
   document.getElementById("s_sum").onclick=e=>{ if(!e.target.closest("[data-ackr]")) return;
@@ -3034,7 +3043,10 @@ function sessionDlg(s, preset){
   document.getElementById("s_bst").onclick = e=>{ const x=e.target.closest("[data-bst]"); if(!x) return; bst=x.dataset.bst; drawBst(); };
   drawBst();
   const bkBox=document.getElementById("s_bk"); if(bkBox) bkBox.onclick=e=>{ const ed=e.target.closest("[data-bkedit]"); if(ed){ bkMoveDlg(ed.dataset.bkedit, ()=>{ const x=S.sessions.find(y=>y.id===s.id); if(x) sessionDlg(x); }); return; } const b=e.target.closest("[data-bkadd]"); if(!b) return; let m=member(b.dataset.bkadd);
-    if(m && m.type!=="member"){
+    if(!m){ const bk0=bkFor(s.id).find(x=>x.id===b.dataset.bkid);
+      if(bk0){ const nid=guestToNonMember(bk0); bk0.member_id=nid; b.dataset.bkadd=nid; m=member(nid);
+        sb.from("fw_bookings").update({member_id:nid, updated_at:new Date().toISOString()}).eq("id",bk0.id).then(r=>{ if(r.error) console.warn(r.error); }); } }
+    if(m && m.type!=="member" && !bkFreeGuest(bkFor(s.id).find(x=>x.id===b.dataset.bkid))){
       /* booked as a guest but is really a member: use the member record and re-link the booking */
       const bk=bkFor(s.id).find(x=>x.member_id===m.id), mm=memberMatch(m)||memberMatch(bk);
       if(mm){ const old=m.id; s.attendees=s.attendees.filter(a=>!(a.memberId===old && a.kind==="nonmember"));
