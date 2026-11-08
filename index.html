@@ -58,6 +58,7 @@ nav.tabs button[aria-current="page"]{color:var(--pink)}
 .btn{background:var(--pink);color:var(--pink-ink);border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}
 .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
 .btn.sm{padding:6px 12px;font-size:13px;border-radius:8px}
+.btn:disabled,.btn[disabled]{opacity:.4;cursor:not-allowed;filter:grayscale(1);pointer-events:none}
 .btn.danger{background:transparent;color:var(--bad);border:1px solid var(--line)}
 .btn.lime{background:var(--lime);color:var(--lime-ink)}
 .linkbtn{background:none;border:0;padding:0;color:var(--ink);font-weight:700;cursor:pointer;text-decoration:underline;text-decoration-color:var(--pink);text-underline-offset:3px;text-align:left}
@@ -816,6 +817,9 @@ const pendTag = s => { const n=bkPend(s); return n?` · ${n} to confirm`:""; };
 const sesFlag = (s, auto) => s && s.status==="cancelled" ? " · CANCELLED" : s && s.status==="full" ? " · FULLY BOOKED (closed)" : auto;
 const capOf = s => +(s&&s.capacity) || +S.settings.capacity || 9;
 const slotsTaken = s => { const bk=bkFor(s.id).filter(b=>b.status==="confirmed"), ids=new Set(bk.map(b=>b.member_id).filter(Boolean)); return bk.length + (s.attendees||[]).filter(a=>!ids.has(a.memberId)).length; };
+/* class time already passed? lock its booking buttons so nobody clicks them by mistake */
+const bkPast = b => !!b.starts_at && new Date(b.starts_at).getTime() <= Date.now();
+const bkLock = (b,html) => bkPast(b) ? html.replace(/<button type="button" class="btn([^"]*)" data-act="(?!bkProof")/g,'<button type="button" disabled title="Class date has passed" class="btn$1" data-act="') : html;
 const bkWhen = b => { const d=new Date(b.starts_at); return d.toLocaleDateString("en-PH",{weekday:"short",month:"short",day:"numeric"})+" · "+d.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}); };
 const bkPayAt = b => b.paid_at || b.confirmed_at || null;
 const bkStamp = iso => { const d=new Date(iso); return d.toLocaleDateString("en-PH",{month:"short",day:"numeric"})+", "+d.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}); };
@@ -846,10 +850,10 @@ function bookingsCard(){
   const row = b => `<li><div class="row between"><div style="min-width:0"><b>${esc(b.name)}</b> ${b.is_member?`<span class="pill pink">${esc(b.member_no||"")}</span>`:`<span class="pill">Guest</span><div class="small muted">${esc(b.contact||"")}${b.note?" · "+esc(String(b.note).replace(/^FB:\s*/,"FB: ")):""}</div>`}
      <div class="small">${esc(b.class_name||"Class")} · ${esc(bkWhen(b))}</div>
      <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${b.proof_path?"":" · No screenshot yet"}${b.paid_at?` · <b>Paid ${esc(bkStamp(b.paid_at))}</b>`:""}</div>${b.status==="pending"?`<div class="small muted">${bkEmailOf(b)?"Email: "+esc(bkEmailOf(b)):"No email on file"}${bkRemAt(b)?` · <b>Reminder sent ${esc(bkRemAt(b))}</b>`:""}</div>`:""}</div>
-     <span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Confirmed":"Waiting for payment"}</span></div>
-     <div class="row" style="margin-top:8px">${b.proof_path?`<button type="button" class="btn sm ghost" data-act="bkProof" data-id="${b.id}">View proof</button>`:""}
+     <span class="pill ${b.status==="confirmed"?"ok":bkPast(b)?"bad":"warn"}">${b.status==="confirmed"?"Confirmed":bkPast(b)?"Class done · unpaid":"Waiting for payment"}</span></div>
+     ${bkPast(b)?`<div class="small" style="margin-top:6px;color:#c0392b"><b>⏱ Class date has passed.</b> Buttons are locked.</div>`:""}<div class="row" style="margin-top:8px">${bkLock(b,`${b.proof_path?`<button type="button" class="btn sm ghost" data-act="bkProof" data-id="${b.id}">View proof</button>`:""}
      ${b.status==="pending"?`<button type="button" class="btn sm" data-act="bkConfirm" data-id="${b.id}">Paid · Confirm</button>${bkEmailOf(b)?`<button type="button" class="btn sm ghost" data-act="bkRemind" data-id="${b.id}">Email payment reminder</button>`:""}<button type="button" class="btn sm ghost" data-act="bkRemindCopy" data-id="${b.id}">Copy reminder</button>`:`<button type="button" class="btn sm ghost" data-act="bkMsg" data-id="${b.id}">Copy message</button><button type="button" class="btn sm ghost" data-act="bkResend" data-id="${b.id}">${bkEmailOf(b)?"Resend email":"No email"}</button><button type="button" class="btn sm ghost" data-act="bkUnconfirm" data-id="${b.id}">Undo confirm</button>`}
-     <button type="button" class="btn sm ghost" data-act="bkMove" data-id="${b.id}">Reschedule</button><button type="button" class="btn sm danger" data-act="bkCancel" data-id="${b.id}">Cancel booking</button></div></li>`;
+     <button type="button" class="btn sm ghost" data-act="bkMove" data-id="${b.id}">Reschedule</button><button type="button" class="btn sm danger" data-act="bkCancel" data-id="${b.id}">Cancel booking</button>`)}</div></li>`;
   return `<div class="card"><div class="row between"><h3 style="margin:0">Online bookings</h3><div class="row"><button type="button" class="btn sm ghost" data-act="bkCopy">Copy booking link</button><button type="button" class="btn sm ghost" data-act="bkRefresh" aria-label="Refresh bookings">↻</button></div></div>
    <p class="small muted" style="margin:6px 0 10px">Members book anytime with their Member ID. Guests (non-members) can book from 24 hours before class. Confirm each booking after you check the payment. Confirming a guest saves them as a non-member. Online booking closes 12 hours before class. Unpaid bookings with no uploaded proof are auto-cancelled 12 hours after booking.</p>
    ${pend.length?`<h3 style="margin:10px 0 6px">To confirm (${pend.length})</h3><ul class="list">${pend.map(row).join("")}</ul>`:`<p class="small muted" style="margin:6px 0">No bookings waiting for payment.</p>`}
@@ -3440,6 +3444,8 @@ function planDlg(p){
 /* ---------- events ---------- */
 function handleAct(b){
   const id=b.dataset.id, a=b.dataset.act;
+  if(b.disabled) return;
+  if(/^bk(Confirm|Remind|RemindCopy|Msg|Resend|Unconfirm|Move|Cancel)$/.test(a)){ const x=BK.find(y=>y.id===id); if(x&&bkPast(x)){ toast("This class date has passed. Buttons are locked."); return; } }
   const ses = () => S.sessions.find(x=>x.id===id);
   const reRender = () => { if(!dlg.open) render(); };
   if(a==="newSession") sessionDlg();
