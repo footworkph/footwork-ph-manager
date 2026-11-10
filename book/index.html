@@ -120,7 +120,7 @@ input:focus{outline:2px solid var(--lime);outline-offset:1px}
   <section id="guest" hidden>
     <button class="btn ghost sm" id="gBack" type="button">‹ Back</button>
     <h1 style="margin-top:14px">Book as a <span>guest</span></h1>
-    <p class="muted">Strictly by appointment. <span id="gOpenTxt">Guest booking is open now.</span> Booking closes <b style="color:var(--ink)" id="gCutH">12 hours</b> before class.</p>
+    <p class="muted">Strictly by appointment. <span id="gOpenTxt">Guest booking is open now.</span> Booking closes <b style="color:var(--ink)" id="gCutH">1 hour</b> before class.</p>
     <div id="gMine"></div>
     <div class="chips" id="gChips" role="group" aria-label="Filter by class" style="margin-top:12px"></div>
     <div id="gList"></div>
@@ -186,13 +186,13 @@ const ERR = {
   not_found: "We couldn't find that Member ID with that mobile number. Use the mobile number you registered with.",
   expired: "Your membership has expired. Message our Facebook page to renew, then you can book again.",
   locked: "Too many tries. Please wait 15 minutes, then try again.",
-  closed: "Booking for this class is closed. Online booking closes 12 hours before class.",
+  closed: "Booking for this class is closed. Online booking closes 1 hour before class.",
   full: "Sorry, this class is full.",
   already: "You already have a slot in this class.",
   no_session: "This class is no longer on the schedule.",
   expires_before: "Your membership expires before this class. Please renew first.",
   paused: "Online booking is paused right now. Please message our Facebook page.",
-  too_late: "It's less than 12 hours before class, so you can't cancel online. Please message our Facebook page.",
+  too_late: "It's less than 1 hour before class, so you can't cancel online. Please message our Facebook page.",
   no_booking: "We couldn't find that booking.",
   bad_details: "Please check your details and try again.",
   network: "No connection. Check your internet and try again.",
@@ -264,7 +264,7 @@ function render(){
       <p class="small muted" style="margin-top:8px">Booking ref: <b style="color:var(--ink)">${esc(s.booking_ref||"")}</b>${s.mine==="pending"?(s.proof_sent?" · Proof sent, waiting for confirmation":" · Please pay to confirm your slot"):""}</p>
       <div class="row" style="justify-content:flex-start;margin-top:10px">
         ${s.mine==="pending"?`<button class="btn sm" data-proof="${esc(s.id)}">${s.proof_sent?"Send another proof":"Upload proof of payment"}</button>`:""}
-        ${!s.free && (s.mine==="confirmed" || s.proof_sent) ? `<span class="small muted">Paid · non-refundable, no cancellation</span>` : s.open?`<button class="btn ghost sm" data-cancel="${esc(s.id)}">Cancel booking</button>`:`<span class="small muted">Can't cancel online (less than ${data.cutoffHours} hours to class)</span>`}
+        ${!s.free && (s.mine==="confirmed" || s.proof_sent) ? `<span class="small muted">Paid · non-refundable, no cancellation</span>` : s.open?`<button class="btn ghost sm" data-cancel="${esc(s.id)}">Cancel booking</button>`:`<span class="small muted">Can't cancel online (less than ${data.cutoffHours} hour${data.cutoffHours==1?'':'s'} to class)</span>`}
       </div>${fgRow(s)}</div>`;
   }).join("") : `<div class="empty card"><b>No bookings yet</b>Pick a class from the schedule to book your slot.</div>`);
 }
@@ -359,7 +359,7 @@ function bookSheet(s){
     <div class="kv"><b>Class</b><span>${esc(s.class)}</span><b>When</b><span>${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}</span>${s.coach?`<b>Coach</b><span>${esc(s.coach)}</span>`:""}<b>Slots</b><span>${Math.max(0,s.capacity-s.taken)} of ${s.capacity} left</span></div>
     <ul class="rules">
       ${s.free?`<li>This class is <b>FREE</b>. No payment needed. Your slot is <b>confirmed right away</b>.</li>`:`<li>Your slot is <b>reserved</b> now and <b>confirmed once you pay</b>.</li>`}
-      <li>Booking closes <b>${data.cutoffHours} hours</b> before class.</li>
+      <li>Booking closes <b>${data.cutoffHours} hour${data.cutoffHours==1?'':'s'}</b> before class.</li>
       <li>Bring your membership card. Show it at the counter for your points and discount.</li>
     </ul>
     <div class="rules" style="border-color:var(--pink)">📧 <b>All booking confirmations are sent to your email.</b><br>${data.member.emailMasked?`We'll send it to <b>${esc(data.member.emailMasked)}</b>. This is the email you gave us, so please double-check it. Wrong email? Message our Facebook page before you pay.`:`We don't have your email yet. Message our Facebook page so we can add it.`}</div>
@@ -510,7 +510,7 @@ async function loadGuest(silent){
   G = r; renderGuest(); show("guest");
 }
 function renderGuest(){
-  $("gOpenTxt").textContent = G.guestOpenHours>=168 ? "Guest booking is open now." : "Members get first pick, so guest booking opens "+G.guestOpenHours+" hours before each class."; $("gCutH").textContent = G.cutoffHours+" hours";
+  $("gOpenTxt").textContent = G.guestOpenHours>=168 ? "Guest booking is open now." : "Members get first pick, so guest booking opens "+G.guestOpenHours+" hours before each class."; $("gCutH").textContent = G.cutoffHours+(G.cutoffHours==1?" hour":" hours");
   const mine = gGet().filter(b=>new Date(b.when) > new Date(Date.now()-3*3600e3));
   gSet(mine);
   $("gMine").innerHTML = (mine.length ? `<h2>Your guest bookings</h2>`+mine.map(b=>`<div class="card" style="margin-bottom:10px"><div class="row"><div><div class="cn">${esc(b.cls)}</div><div class="co">${esc(fmtWhen(b.when))} · Ref ${esc(b.ref)}${b.free||b.confirmed?" · Confirmed ✓":b.proofSent?" · Proof sent ✓":" · Waiting for payment"}</div></div><button class="btn sm" data-gshow="${esc(b.ref)}">${b.free||b.proofSent||b.confirmed?"Show booking":"Pay / upload proof"}</button></div></div>`).join("") : "")
