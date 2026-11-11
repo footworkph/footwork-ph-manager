@@ -2100,7 +2100,7 @@ function vWeek(){
     </div>
     <div class="row" style="margin-top:10px;justify-content:center"><input type="date" data-calpick value="${ws}" aria-label="Go to any day"><button type="button" class="btn sm ghost" data-act="calNav" data-v="0">This week</button></div>
   </div>
-  <div class="wkbar"><button type="button" class="btn lime" data-act="sendSched">Email schedule to members</button><button type="button" class="btn sm ghost" data-act="copyViber">Copy for Viber</button><button type="button" class="btn sm ghost" data-act="copyWeek">Copy last week</button></div>
+  <div class="wkbar"><button type="button" class="btn lime" data-act="sendSched">Email schedule to members</button><button type="button" class="btn sm ghost" data-act="copyViber">Copy for Viber</button><button type="button" class="btn sm" data-act="announce">📢 Announcement</button><button type="button" class="btn sm ghost" data-act="copyWeek">Copy last week</button></div>
   <p class="small muted" style="margin:-4px 0 12px">${list.length} class${list.length===1?"":"es"} this week.${sent?` Emailed ${esc(fmtStamp(sent.at))} to ${sent.n} member${sent.n===1?"":"s"}.`:" Not emailed yet."}</p>
   <div class="wk">${days}</div>`;
 }
@@ -2182,6 +2182,79 @@ const mailReady = () => /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec
 async function mailPost(payload){
   const r = await fetch(S.settings.mail.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(Object.assign({key:S.settings.mail.key}, payload))});
   return r.json();
+}
+/* ---------- announcement: email any message to members, non-members and online bookers ---------- */
+const ANN_DEFAULT = {
+  subject: "Footwork PH Update: Minimum Class Size",
+  body: `Hi Footwork fam!
+
+Starting today, each class needs at least ${typeof MIN_PAX!=="undefined"?MIN_PAX:3} students to push through.
+
+If only 1 or 2 students book a class:
+• We may move you to another time slot, or
+• Merge you with another class.
+
+✅ We will message you at least 2 hours before class.
+✅ Your payment carries over to the new schedule. No extra charge.
+
+Want your class to push through? Book early and bring a friend!
+
+Thank you for understanding. See you at the studio!`
+};
+function annHtml(subject, body){
+  const F="font-family:Arial,Helvetica,sans-serif;";
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;padding:0;background:#f3f0f5">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f0f5"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border:3px solid #FA1294;border-radius:14px;overflow:hidden">
+<tr><td style="${F}background:#111;padding:20px 16px;text-align:center;font-size:28px;font-weight:900;font-style:italic"><span style="color:#fff">FOOT</span><span style="color:#B4FA2A">WORK</span> <span style="color:#FA1294">PH</span></td></tr>
+<tr><td style="${F}background:#B4FA2A;padding:12px 16px;font-size:17px;font-weight:900;color:#111;text-align:center">📢 ${esc(subject)}</td></tr>
+<tr><td style="${F}padding:18px;font-size:15px;line-height:1.6;color:#222">${esc(body).replace(/\n/g,"<br>")}</td></tr>
+<tr><td align="center" style="padding:4px 16px 20px"><a href="${BOOK_URL}" target="_blank" style="${F}display:inline-block;background:#111;color:#B4FA2A;font-size:16px;font-weight:900;text-decoration:none;padding:14px 30px;border-radius:999px;border:3px solid #B4FA2A">BOOK A CLASS</a></td></tr>
+<tr><td style="${F}padding:14px 16px;font-size:12px;line-height:1.5;color:#555;text-align:center;border-top:1px solid #eee">${esc(FWC_FOOT)}</td></tr>
+</table></td></tr></table></body></html>`;
+}
+async function announceDlg(){
+  const byName=(a,b)=>a.name.localeCompare(b.name), okm=m=>EMAIL_RX.test((m.email||"").trim());
+  const mem = S.members.filter(m=>m.type==="member" && okm(m)).sort(byName);
+  const non = S.members.filter(m=>m.type!=="member" && okm(m)).sort(byName);
+  const noMail = S.members.filter(m=>!okm(m)).length;
+  const known = new Set(S.members.map(m=>(m.email||"").trim().toLowerCase()).filter(Boolean));
+  let bkr = [];
+  if(sb && sbUser){ try{ const r = await sb.from("fw_bookings").select("name,email,created_at").order("created_at",{ascending:false}).limit(1000);
+    const seen=new Set(); (r.data||[]).forEach(b=>{ const e=(b.email||"").trim().toLowerCase(); if(EMAIL_RX.test(e) && !known.has(e) && !seen.has(e)){ seen.add(e); bkr.push({id:"bk:"+e, name:b.name||e, email:e}); } }); bkr.sort(byName); }catch(e){} }
+  const rcp = (id,name,email) => `<label class="rcp"><input type="checkbox" data-ann="${esc(id)}" data-em="${esc(email.trim().toLowerCase())}" checked><span class="nm"><b>${esc(name)}</b><br><span class="small muted">${esc(email.trim())}</span></span></label>`;
+  const group = (key,title,list) => list.length ? `<details style="margin-top:8px"><summary class="small"><b>${title} (${list.length})</b> · <a href="#" data-grp="${key}" data-on="1">tick all</a> · <a href="#" data-grp="${key}" data-on="0">untick all</a></summary><div data-g="${key}">${list.map(m=>rcp(m.id,m.name,m.email)).join("")}</div></details>` : "";
+  openDlg("📢 Send announcement", `
+    <label class="f">Subject<input id="an_subj" value="${esc(ANN_DEFAULT.subject)}"></label>
+    <label class="f">Message<textarea id="an_body" rows="12">${esc(ANN_DEFAULT.body)}</textarea></label>
+    <div class="row" style="margin:0 0 8px"><button type="button" class="btn sm ghost" id="an_copy">Copy for Viber / Facebook</button></div>
+    <h3 style="margin:8px 0 2px">Send email to <span id="an_n"></span></h3>
+    ${group("m","Members",mem)}${group("n","Non-members",non)}${group("b","Online bookers not in Students",bkr)}
+    ${noMail?`<p class="small muted" style="margin:8px 0 0">${noMail} student${noMail===1?" has":"s have"} no email saved, so they won't get it. Post it in Viber and Facebook too.</p>`:""}
+    <details style="margin-top:12px"><summary class="small"><b>Preview email</b></summary><iframe class="mailprev" id="an_prev" sandbox="" title="Email preview"></iframe></details>
+    <p class="small muted" style="margin:10px 0 0">Each person gets their own email from the studio Gmail. Gmail allows about 100 emails a day, so send big lists once only.</p>`,
+  { saveLabel:"Send email", onSave:()=>{
+      if(!mailReady()){ toast("Email sending isn't set up yet. Use Copy for Viber / Facebook."); return false; }
+      const to=[...new Set([...document.querySelectorAll("#dlgBody [data-ann]:checked")].map(x=>x.dataset.em).filter(e=>EMAIL_RX.test(e)))];
+      if(!to.length){ toast("Tick at least one person"); return false; }
+      if(!navigator.onLine){ toast("You're offline. Connect to the internet first."); return false; }
+      const subj=val("an_subj")||ANN_DEFAULT.subject, body=document.getElementById("an_body").value.trim();
+      if(!body){ toast("Type a message"); return false; }
+      if(!confirm(`Send "${subj}" to ${to.length} ${to.length===1?"person":"people"}?`)) return false;
+      const btn=document.getElementById("dlgSave"); btn.disabled=true; btn.textContent="Sending…";
+      mailPost({to, subject:"📢 "+subj+" · Footwork PH", html:annHtml(subj,body), text:body+"\n\nBook here: "+BOOK_URL+"\n\n"+FWC_FOOT})
+        .then(r=>{ if(!r||!r.ok) throw new Error((r&&r.error)||"Not sent"); dlg.close(); toast(`Sent to ${r.sent||to.length} ${(r.sent||to.length)===1?"person":"people"}`+(r.failed&&r.failed.length?` · ${r.failed.length} failed`:"")); })
+        .catch(err=>{ btn.disabled=false; btn.textContent="Send email"; toast("Not sent: "+(err&&err.message||"check your connection")); });
+      return false;
+    } });
+  const body=document.getElementById("dlgBody");
+  const count=()=>{ document.getElementById("an_n").textContent = "("+new Set([...body.querySelectorAll("[data-ann]:checked")].map(x=>x.dataset.em)).size+" people)"; };
+  const prev=()=>{ const f=document.getElementById("an_prev"); if(f) f.srcdoc=annHtml(val("an_subj")||ANN_DEFAULT.subject, document.getElementById("an_body").value); };
+  body.onclick=e=>{ const a=e.target.closest("[data-grp]"); if(!a) return; e.preventDefault(); body.querySelectorAll(`[data-g="${a.dataset.grp}"] [data-ann]`).forEach(x=>x.checked=a.dataset.on==="1"); count(); };
+  body.onchange=count;
+  document.getElementById("an_subj").oninput=prev; document.getElementById("an_body").oninput=prev;
+  document.getElementById("an_copy").onclick=()=>copyText("📢 "+(val("an_subj")||ANN_DEFAULT.subject).toUpperCase()+"\n\n"+document.getElementById("an_body").value.trim()+"\n\nBook here: "+BOOK_URL, "Copied. Paste it in Viber or Facebook.");
+  count(); prev();
 }
 function sendSchedDlg(){
   const ws=curWeek();
@@ -3515,6 +3588,7 @@ function handleAct(b){
   else if(a==="copyWeek") copyLastWeek();
   else if(a==="copyViber"){ const ws=curWeek(); if(!weekSessions(ws).length) toast("No classes this week yet"); else copyText(schedText(ws),"Schedule copied. Paste it in Viber."); }
   else if(a==="sendSched") sendSchedDlg();
+  else if(a==="announce") announceDlg();
   else if(a==="sendNon") sendNonDlg();
   else if(a==="sendMem") sendNonDlg(true);
   else if(a==="sendViber") sendViberDlg();
