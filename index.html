@@ -2965,11 +2965,29 @@ function personDlg(m, type){
     save(); toast(m.type==="member"?"Now a member":"Moved to non-members"); peopleSeg=m.type; personDlg(m); };
 }
 
+/* a class with active bookings can't be moved or deleted, so no student gets a wrong reminder */
+function schedLockMsg(list, what){
+  const names = list.map(b=>`• ${b.name} (${b.status==="confirmed"?"Paid":"Not paid yet"})`).join("\n");
+  return `You can't ${what} this class. ${list.length} student${list.length===1?" is":"s are"} booked:\n\n${names}\n\nFirst tap Edit on each booking below and use “Reschedule” (it emails them the new schedule) or “Cancel this booking”. Then you can change or delete the class.\n\nTo stop new bookings, use “Mark fully booked” or “Mark cancelled”.`;
+}
+function applySchedLock(list){
+  const on = list.length>0;
+  ["s_date","s_time","s_type"].forEach(id=>{ const el=document.getElementById(id); if(el){ el.disabled=on; el.title=on?"Locked — this class has bookings":""; } });
+  const del = document.getElementById("dlgDel");
+  if(del){ del.style.opacity = on?".45":""; del.title = on?"Locked — this class has bookings":""; }
+  let box = document.getElementById("s_lock");
+  if(!on){ if(box) box.remove(); return; }
+  if(!box){ box=document.createElement("div"); box.id="s_lock"; document.getElementById("dlgBody").prepend(box); }
+  box.style.cssText="margin:0 0 12px;padding:10px 12px;border:1px solid var(--bad);border-radius:10px;background:rgba(255,0,80,.08)";
+  box.innerHTML = `<p class="small" style="margin:0"><b>🔒 Schedule locked — ${list.length} student${list.length===1?" is":"s are"} booked.</b> Date, time and class type can't be changed, and the class can't be deleted. To move them, tap <b>Edit</b> on each booking below and use <b>Reschedule</b> (sends them the new schedule) or cancel the booking.</p>`;
+}
 function sessionDlg(s, preset){
   const isNew=!s;
   const pi = preset && preset.instructorId ? instr(preset.instructorId) : null;
   s = s ? structuredClone(s) : {id:uid(), date:(preset&&preset.date)||todayISO(), time:"18:00", typeId:(pi&&pi.types&&pi.types[0])||S.settings.classTypes[0]?.id||"", title:"", instructorId:(pi&&pi.id)||S.settings.instructors[0]?.id||"", attendees:[], paidOut:false, instStatus:"present", pctOverride:""};
   const newNon = [];
+  const orig = isNew ? null : {date:s.date, time:s.time, typeId:s.typeId};
+  let lockBk = isNew ? [] : bkFor(s.id).filter(b=>b.status==="pending"||b.status==="confirmed");
   const drawSum = ()=>{ const c=sessionCalc(s), e=expectedCalc(s); document.getElementById("s_sum").innerHTML = (e.pending?`<p class="small" style="margin:10px 0 0"><b>Expected with paid bookings</b> · ${slotsTaken(s)}/${capOf(s)} pax · Sales <b>${peso(e.gross)}</b></p>${splitBar(e.inst,e.biz,e.pct,e)}<p class="small muted" style="margin:10px 0 0">Actual (checked in only)</p>`:"") + `<p class="small" style="margin:10px 0 0">${slotsTaken(s)}/${capOf(s)} pax (${s.attendees.length} checked in) · Sales <b>${peso(c.gross)}</b></p>${splitBar(c.inst,c.biz,c.pct,c)}${s.attendees.length?`<button type="button" class="btn sm ghost" data-ackr style="margin-top:10px">🖨 Print coach receipt</button>`:""}`; };
   const drawAtt = ()=>{
     const box=document.getElementById("s_att");
@@ -3013,11 +3031,24 @@ function sessionDlg(s, preset){
       s.date=val("s_date"); s.time=val("s_time"); { const c=+val("s_cap"); if(c>0) s.capacity=Math.round(c); else delete s.capacity; } s.typeId=val("s_type"); s.instructorId=val("s_instr"); s.instStatus=val("s_status");
       const p=val("s_pct"); s.pctOverride = p===""?"":Math.max(0,Math.min(100,+p));
       if(!s.date){ toast("Pick a date"); return false; }
+      if(orig && lockBk.length && (s.date!==orig.date || s.time!==orig.time || s.typeId!==orig.typeId)){
+        alert(schedLockMsg(lockBk,"change the date, time or class type of")); return false; }
       newNon.filter(n=>s.attendees.some(a=>a.memberId===n.id)).forEach(n=>S.members.push(n));
       if(isNew) S.sessions.push(s); else S.sessions[S.sessions.findIndex(x=>x.id===s.id)] = s;
       toast(isNew?"Class added":"Class saved");
     },
     onDelete: isNew?null:()=>{ S.sessions=S.sessions.filter(x=>x.id!==s.id); } });
+  if(!isNew){
+    const delBtn = document.getElementById("dlgDel");
+    if(delBtn){ const del = delBtn.onclick; delBtn.onclick = e=>{ if(lockBk.length){ alert(schedLockMsg(lockBk,"delete")); return; } del(e); }; }
+    applySchedLock(lockBk);
+    /* double-check with the live booking list, in case the screen is not updated yet */
+    if(sb && sbUser) sb.from("fw_bookings").select("id,name,status").eq("class_id", s.id).in("status",["pending","confirmed"]).then(r=>{
+      if(r.error || !dlg.open || !document.getElementById("s_date")) return;
+      const ids = new Set(lockBk.map(b=>b.id)); (r.data||[]).forEach(b=>{ if(!ids.has(b.id)) lockBk.push(b); });
+      applySchedLock(lockBk);
+    });
+  }
   const add = (m, kind) => {
     if(s.attendees.some(a=>a.memberId===m.id)){ toast("Already checked in ✓"); return; }
     if(!bkFor(s.id).some(b=>b.member_id===m.id) && slotsTaken(s)>=capOf(s)) toast("Class is fully booked (max "+capOf(s)+" pax).");
