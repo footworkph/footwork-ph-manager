@@ -894,7 +894,7 @@ async function bkSet(id, patch, msg){
   if(r.error){ toast("Couldn't update. Check your internet."); return; }
   if(patch.status==="confirmed" && bk){
     const res = await bkSendConf(Object.assign({}, bk, patch));
-    msg = res==="sent" ? "Confirmed · email sent to "+bkEmailOf(bk) : res==="noemail" ? "Confirmed · no email on file. Tap “Copy message” to send on Messenger." : res==="nomail" ? "Confirmed · email not set up. Tap “Copy message”." : "Confirmed · email failed. Tap “Copy message”.";
+    msg = res==="sent" ? "Confirmed · email sent to "+bkEmailOf(bk) : res==="noemail" ? "Confirmed · no email on file. Tap “Copy message” to send on Messenger." : res==="nomail" ? "Confirmed · email not set up. Tap “Copy message”." : res==="queued" ? "Confirmed · email limit reached. Email queued — it sends automatically once the limit frees up." : "Confirmed · email failed. Tap “Copy message”.";
   }
   toast(msg); await loadBookings(); render();
 }
@@ -929,7 +929,7 @@ function bkMoveDlg(id, back){
         if(r.error){ btn.disabled=false; btn.textContent="Reschedule"; toast("Couldn't reschedule. Check your internet."); return; }
         dlg.close();
         let msg = "Rescheduled to "+typeName(s)+" · "+bkWhen(Object.assign({},b,patch));
-        if(mail){ const res = await bkSendConf(Object.assign({}, b, patch)); msg += res==="sent" ? " · email sent" : " · email failed, use Copy message"; }
+        if(mail){ const res = await bkSendConf(Object.assign({}, b, patch)); msg += res==="sent" ? " · email sent" : res==="queued" ? " · email queued, sends automatically later" : " · email failed, use Copy message"; }
         toast(msg); await loadBookings(); render(); if(back) back();
       });
       return false;
@@ -974,7 +974,11 @@ async function bkSendConf(b){
   const to = bkEmailOf(b);
   if(!to || !EMAIL_RX.test(to)) return "noemail";
   if(!mailReady()) return "nomail";
-  try{ const r = await mailPost({to:[to], subject:`Confirmed: ${b.class_name||"Class"} · ${bkWhen(b)} · Footwork PH`, html:bkConfHtml(b), text:bkConfText(b)}); return r&&r.ok?"sent":"fail"; }catch(e){ return "fail"; }
+  const mail = {to:[to], subject:`Confirmed: ${b.class_name||"Class"} · ${bkWhen(b)} · Footwork PH`, html:bkConfHtml(b), text:bkConfText(b)};
+  try{ const r = await mailPost(mail); if(r&&r.ok) return "sent"; }catch(e){}
+  /* failed (e.g. Gmail daily limit) → queue it; the server retries every 10 minutes until it goes through */
+  try{ const q = await sb.rpc("fw_queue_mail", {p_booking:b.id, p_kind:"confirm", p_to:to, p_subject:mail.subject, p_html:mail.html, p_text:mail.text}); if(!q.error && q.data==="queued") return "queued"; }catch(e){}
+  return "fail";
 }
 /* ---------- payment reminder for unpaid bookings ---------- */
 function bkAmount(b){ const s=S.sessions.find(x=>x.id===b.class_id); return rate(b.is_member?"member":"nonMember", s&&s.typeId); }
@@ -3572,7 +3576,7 @@ function handleAct(b){
   else if(a==="bkMsg"){ const b=BK.find(x=>x.id===id); if(b) copyText(bkConfText(b),"Message copied. Paste it in Messenger."); }
   else if(a==="bkRemind"){ const bk=BK.find(x=>x.id===id); if(bk){ b.disabled=true; b.textContent="Sending…"; bkSendRem(bk).then(r=>{ if(r==="sent") bkMarkReminded(bk); toast(r==="sent"?"Reminder sent to "+bkEmailOf(bk):r==="noemail"?"No email on file. Use Copy reminder.":r==="nomail"?"Email not set up. Use Copy reminder.":"Email failed. Use Copy reminder."); render(); }); } }
   else if(a==="bkRemindCopy"){ const b=BK.find(x=>x.id===id); if(b){ copyText(bkRemText(b),"Reminder copied. Paste it in Messenger."); bkMarkReminded(b); render(); } }
-  else if(a==="bkResend"){ const b=BK.find(x=>x.id===id); if(b) bkSendConf(b).then(r=>toast(r==="sent"?"Email sent":r==="noemail"?"No email on file. Use Copy message.":"Email failed. Use Copy message.")); }
+  else if(a==="bkResend"){ const b=BK.find(x=>x.id===id); if(b) bkSendConf(b).then(r=>toast(r==="sent"?"Email sent":r==="queued"?"Email limit reached. Queued — sends automatically later.":r==="noemail"?"No email on file. Use Copy message.":"Email failed. Use Copy message.")); }
   else if(a==="bkConfirm") bkSet(id,{status:"confirmed"},"Booking confirmed");
   else if(a==="bkUnconfirm") bkSet(id,{status:"pending"},"Back to waiting for payment");
   else if(a==="bkCancel"){ const bk=BK.find(x=>x.id===id); if(confirm(`Cancel ${bk?bk.name+"'s":"this"} booking${bk?" for "+(bk.class_name||"class")+" · "+bkWhen(bk):""}? The slot opens up for others.`)) bkSet(id,{status:"cancelled",cancelled_by:"studio"},"Booking cancelled"); }
