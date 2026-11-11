@@ -172,6 +172,14 @@ const POLICY = `<div class="rules" style="border-color:var(--bad)">
     <li>Your slot is <b>non-transferable</b>. Only the person named can attend.</li>
     <li><b>No show = forfeited.</b> Your slot and payment will not be returned or moved.</li>
   </ul></div>`;
+const MIN_PAX = 3;
+const MINPAX = `<div class="rules" style="border-color:var(--lime)">
+  <div style="font-weight:700;margin-bottom:6px">👥 Minimum class size</div>
+  <ul style="margin:0;padding-left:18px">
+    <li>A class needs at least <b>${MIN_PAX} students</b> to push through.</li>
+    <li>If fewer book, we may <b>move you to another time slot</b> or <b>merge you with another class</b>.</li>
+    <li>We will message you <b>at least 2 hours before class</b>. Your payment carries over to the new schedule.</li>
+  </ul></div>`;
 const BEFORE = (member) => `<div class="rules" style="border-color:var(--lime)">
   <div style="font-weight:700;margin-bottom:6px">📋 Before class</div>
   <ul style="margin:0;padding-left:18px">
@@ -363,7 +371,7 @@ function bookSheet(s){
       <li>Bring your membership card. Show it at the counter for your points and discount.</li>
     </ul>
     <div class="rules" style="border-color:var(--pink)">📧 <b>All booking confirmations are sent to your email.</b><br>${data.member.emailMasked?`We'll send it to <b>${esc(data.member.emailMasked)}</b>. This is the email you gave us, so please double-check it. Wrong email? Message our Facebook page before you pay.`:`We don't have your email yet. Message our Facebook page so we can add it.`}</div>
-    ${s.free?"":POLICY+`<label class="check" style="margin-top:0;color:var(--ink)"><input type="checkbox" id="bkAgree"> I understand: no cancellation, no refund, not transferable. No show = forfeited.</label>`}
+    ${MINPAX}${s.free?"":POLICY+`<label class="check" style="margin-top:0;color:var(--ink)"><input type="checkbox" id="bkAgree"> I understand: no cancellation, no refund, not transferable. No show = forfeited. Classes under ${MIN_PAX} students may be moved or merged.</label>`}
     <div class="err" id="bkErr" hidden></div>
     <button class="btn pink block" id="bkGo">Confirm booking</button>
     <button class="btn ghost block" style="margin-top:10px" data-close>Not now</button>`);
@@ -562,8 +570,8 @@ function gBookSheet(s){
         <li>Aero Step: check your free step board before class starts.</li>
         <li>The studio is not responsible for lost items.</li>
       </ul>
-      ${s.free?"":POLICY}
-      <label class="check" style="margin-top:0;color:var(--ink)"><input type="checkbox" id="gAgree"> ${s.free?"I agree to the studio rules":"I agree to the studio rules and the no cancellation, no refund, non-transferable policy. No show = forfeited."}</label>
+      ${MINPAX}${s.free?"":POLICY}
+      <label class="check" style="margin-top:0;color:var(--ink)"><input type="checkbox" id="gAgree"> ${s.free?"I agree to the studio rules":`I agree to the studio rules and the no cancellation, no refund, non-transferable policy. No show = forfeited. Classes under ${MIN_PAX} students may be moved or merged.`}</label>
       <div class="err" id="gErr" hidden></div>
       <button class="btn pink block" id="gGo" type="submit">Reserve my slot</button>
     </form>
