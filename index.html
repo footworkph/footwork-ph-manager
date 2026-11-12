@@ -980,6 +980,71 @@ async function bkSendConf(b){
   try{ const q = await sb.rpc("fw_queue_mail", {p_booking:b.id, p_kind:"confirm", p_to:to, p_subject:mail.subject, p_html:mail.html, p_text:mail.text}); if(!q.error && q.data==="queued") return "queued"; }catch(e){}
   return "fail";
 }
+/* ---------- cancel a class below the minimum (1–2 pax) and email each student their options ---------- */
+const CREDIT_DAYS = 30;
+const lowPaid = b => b.status==="confirmed" && !bkFreeGuest(b) && !(isSet(b.amount) && +b.amount===0);
+function lowCancelText(b){
+  const head = `Hi ${b.name}! This is Footwork PH.\n\nWe're sorry, your class is CANCELLED.\n\nClass: ${b.class_name||"Class"}\nWhen: ${bkWhen(b)}\nBooking ref: ${b.ref}\n\nWHY: This class did not meet the minimum of ${MIN_PAX} students needed for a class to push through.\n\n`;
+  const body = lowPaid(b)
+    ? `Your payment is safe. Please choose 1 option:\n\n1) RESCHEDULE – Move to the same class on another time slot or date. Message our Facebook page (Footwork PH) with your booking ref and the day and time you want. We will move your booking. No need to pay again. See open classes: ${BOOK_URL}${b.is_member?"":"#guest"}\n\n2) REFUND – Message our Facebook page (Footwork PH) with your booking ref and your GCash/Maya number. We will send your full refund.\n\n3) CLASS CREDIT – Keep your payment as credit for any class within ${CREDIT_DAYS} days. Just message our Facebook page when you're ready to book.\n\nPlease reply on our Facebook page so we can fix your booking.`
+    : `You don't need to pay for this booking anymore.\n\nYou can pick another class or schedule here: ${BOOK_URL}${b.is_member?"":"#guest"}`;
+  return head + body + `\n\nSorry for the trouble, and thank you for understanding!\n${FWC_FOOT}`;
+}
+function lowCancelHtml(b){
+  const F="font-family:Arial,Helvetica,sans-serif;", link=BOOK_URL+(b.is_member?"":"#guest");
+  const row=(k,v,c)=>`<tr><td style="${F}padding:6px 0;width:110px;color:#666;font-size:14px">${k}</td><td style="${F}padding:6px 0;color:${c||"#111"};font-size:15px;font-weight:700">${esc(v)}</td></tr>`;
+  const opt=(n,t,d)=>`<tr><td style="${F}padding:10px 12px;border-bottom:1px solid #eadff0;font-size:14px;line-height:1.55;color:#222"><b style="color:#E8157F">${n}) ${t}</b><br>${d}</td></tr>`;
+  const box = lowPaid(b)
+    ? `<tr><td style="${F}padding:4px 18px 8px;font-size:15px;font-weight:800;color:#111">Your payment is safe. Please choose 1 option:</td></tr>
+<tr><td style="padding:0 18px 14px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f3fa;border-radius:10px">
+${opt(1,"RESCHEDULE",`Move to the same class on another time slot or date. Message our Facebook page <b>Footwork PH</b> with your booking ref and the day and time you want. We will move your booking. No need to pay again. <a href="${link}" style="color:#E8157F;font-weight:700">See open classes</a>`)}
+${opt(2,"REFUND",`Message our Facebook page <b>Footwork PH</b> with your booking ref and your GCash/Maya number. We will send your full refund.`)}
+${opt(3,"CLASS CREDIT",`Keep your payment as credit for any class within <b>${CREDIT_DAYS} days</b>. Just message our Facebook page when you're ready to book.`)}
+</table></td></tr>`
+    : `<tr><td style="${F}padding:4px 18px 14px;font-size:15px;line-height:1.5;color:#111">You don't need to pay for this booking anymore. You can pick another class or schedule:</td></tr>
+<tr><td align="center" style="padding:0 16px 18px"><a href="${link}" target="_blank" style="${F}display:inline-block;background:#111;color:#B4FA2A;font-size:16px;font-weight:900;text-decoration:none;padding:14px 26px;border-radius:999px;border:3px solid #B4FA2A">CHOOSE ANOTHER CLASS</a></td></tr>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;padding:0;background:#f3f0f5">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f0f5"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border:3px solid #FA1294;border-radius:14px;overflow:hidden">
+<tr><td style="${F}background:#111;padding:20px 16px;text-align:center;font-size:28px;font-weight:900;font-style:italic"><span style="color:#fff">FOOT</span><span style="color:#B4FA2A">WORK</span> <span style="color:#FA1294">PH</span></td></tr>
+<tr><td style="${F}padding:20px 18px 6px;font-size:20px;font-weight:800;color:#111">&#10060; Class cancelled</td></tr>
+<tr><td style="${F}padding:0 18px 10px;font-size:15px;color:#333">Hi ${esc(b.name)}, we're sorry. Your class did not meet the minimum of <b>${MIN_PAX} students</b> needed to push through.</td></tr>
+<tr><td style="padding:0 18px 12px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${row("Class",b.class_name||"Class")}${row("When",bkWhen(b))}${row("Booking ref",b.ref)}${row("Status","Cancelled (below minimum)","#E8157F")}</table></td></tr>
+${box}
+<tr><td style="${F}background:#FA1294;padding:12px 16px;font-size:13px;line-height:1.45;font-weight:700;color:#fff;text-align:center">Sorry for the trouble, and thank you for understanding!</td></tr>
+<tr><td style="${F}padding:14px 16px;font-size:12px;line-height:1.5;color:#555;text-align:center">${esc(FWC_FOOT)}</td></tr>
+</table></td></tr></table></body></html>`;
+}
+async function lowCancelMail(b){
+  const to = bkEmailOf(b);
+  if(!to || !EMAIL_RX.test(to)) return "noemail";
+  if(!mailReady()) return "nomail";
+  const mail = {to:[to], subject:`Class cancelled: ${b.class_name||"Class"} · ${bkWhen(b)} · Footwork PH`, html:lowCancelHtml(b), text:lowCancelText(b)};
+  try{ const r = await mailPost(mail); if(r&&r.ok) return "sent"; }catch(e){}
+  try{ const q = await sb.rpc("fw_queue_mail", {p_booking:b.id, p_kind:"lowpax", p_to:to, p_subject:mail.subject, p_html:mail.html, p_text:mail.text}); if(!q.error && q.data==="queued") return "queued"; }catch(e){}
+  return "fail";
+}
+async function cancelLowClass(s, list){
+  const paid = list.filter(lowPaid).length;
+  if(!confirm(`Cancel this class?\n\n${typeName(s)} · ${bkWhen({starts_at:sesStartISO(s)})}\nOnly ${list.length} booked (minimum is ${MIN_PAX}).\n\n${list.map(b=>"• "+b.name+(lowPaid(b)?" (Paid)":" (Not paid)")).join("\n")}\n\nEach student gets an email.${paid?" Paid students can choose: reschedule, refund, or class credit.":""}`)) return false;
+  let sent=0, queued=0; const noMail=[];
+  for(const b of list){
+    const res = await lowCancelMail(b);
+    if(res==="sent") sent++; else if(res==="queued") queued++; else noMail.push(b);
+    const r = await sb.from("fw_bookings").update({status:"cancelled", cancelled_by:`studio (below min ${MIN_PAX} pax)`,
+      cancel_mail_status: res==="sent"?"sent: low pax":res==="queued"?"queued: low pax":"not sent: "+res, cancel_mail_at:new Date().toISOString(),
+      note:((b.note?b.note+" · ":"")+`Class cancelled — below minimum ${MIN_PAX} pax${lowPaid(b)?" (paid: reschedule / refund / credit)":""}`).slice(0,500),
+      updated_at:new Date().toISOString()}).eq("id", b.id);
+    if(r.error) console.warn(r.error);
+  }
+  const x = S.sessions.find(y=>y.id===s.id); if(x){ x.status="cancelled"; save(); }
+  await loadBookings(); render();
+  if(noMail.length){
+    alert(`Class cancelled. ${sent} email${sent===1?"":"s"} sent${queued?`, ${queued} queued`:""}.\n\nNo email went to:\n${noMail.map(b=>"• "+b.name+(b.contact?" · "+b.contact:"")).join("\n")}\n\nThe message for them is copied. Paste it on Messenger.`);
+    copyText(noMail.map(lowCancelText).join("\n\n——————\n\n"), "Message copied");
+  } else toast(`Class cancelled · ${sent} email${sent===1?"":"s"} sent${queued?` · ${queued} queued (sends automatically)`:""}`);
+  return true;
+}
 /* ---------- payment reminder for unpaid bookings ---------- */
 function bkAmount(b){ const s=S.sessions.find(x=>x.id===b.class_id); return rate(b.is_member?"member":"nonMember", s&&s.typeId); }
 function bkRemAt(b){ const t=(S.settings.bkReminded||{})[b.id]; if(!t) return ""; const d=new Date(t); return d.toLocaleDateString("en-PH",{month:"short",day:"numeric"})+" "+d.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}); }
@@ -3089,6 +3154,8 @@ function sessionDlg(s, preset){
   const sel = (id,label,items) => `<select id="${id}" style="flex:1;min-width:150px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)"><option value="">${label}</option>${items}</select>`;
   const byName=(a,b)=>a.name.localeCompare(b.name);
   const {pct} = instRate(s);
+  const lowList = isNew||s.status==="cancelled"||new Date(sesStartISO(s)).getTime()<=Date.now() ? [] : bkFor(s.id).filter(b=>b.status==="pending"||b.status==="confirmed");
+  if(lowList.length>=MIN_PAX) lowList.length=0;
   openDlg(isNew?"Add class":"Edit class", `
     <div class="grid2">
       <label class="f">Date<input type="date" id="s_date" value="${s.date}"></label>
@@ -3102,6 +3169,7 @@ function sessionDlg(s, preset){
     <div class="f" style="margin:4px 0 12px"><span>Online booking for this class</span>
       <div class="row" id="s_bst" style="margin-top:6px;gap:6px">${[["","Open"],["full","Mark fully booked"],["cancelled","Mark cancelled"]].map(([v,l])=>`<button type="button" class="btn sm ${(s.status||"")===v?(v==="cancelled"?"danger":""):"ghost"}" data-bst="${v}" ${(s.status||"")===v&&v==="cancelled"?'style="background:var(--bad);color:#fff"':""}>${l}</button>`).join("")}</div>
       <p class="small muted" id="s_bstnote" style="margin:6px 0 0"></p></div>
+    ${lowList.length?`<div id="s_low" style="margin:0 0 12px;padding:10px 12px;border:1px solid var(--bad);border-radius:10px;background:rgba(255,0,80,.08)"><p class="small" style="margin:0 0 8px"><b>⚠ Only ${lowList.length} booked — below the minimum of ${MIN_PAX}.</b> Cancel the class and email each student. Paid students choose: reschedule, refund, or class credit (${CREDIT_DAYS} days).</p><button type="button" class="btn sm danger" id="s_lowcancel" style="background:var(--bad);color:#fff">Cancel class &amp; email students</button></div>`:""}
     ${bkFor(s.id).length?`<div class="row between" style="margin:8px 0 6px"><h3 style="margin:0">Booked online (${bkFor(s.id).length})</h3>${bkFor(s.id).some(b=>b.status==="confirmed")?`<button type="button" class="btn sm ghost" id="s_sheet">🖨 Sign-in sheet</button>`:""}</div><div id="s_bk" style="margin-bottom:10px">${bkFor(s.id).map(b=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span><b>${esc(b.name)}</b> ${bkFreeGuest(b)?bkFreeTag(b):`<span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Paid":"Not paid yet"}</span>`}</span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" class="btn sm ghost" data-bkedit="${b.id}">Edit</button><button type="button" class="btn sm ghost" data-bkadd="${esc(b.member_id||"")}" data-bkid="${esc(b.id)}">Check in</button></span></div>`).join("")}</div>`:""}
     <h3 style="margin:8px 0 6px">Attendance</h3>
     <div class="row" style="margin-bottom:8px">${sel("s_addm","Add a member…",S.members.filter(m=>m.type==="member").sort(byName).map(m=>`<option value="${m.id}">${esc(memLabel(m))}</option>`).join(""))}</div>
@@ -3154,6 +3222,8 @@ function sessionDlg(s, preset){
     document.getElementById("s_bstnote").innerHTML = bst==="full" ? "Booking link shows this class as <b>Fully booked</b>. No new bookings." : bst==="cancelled" ? `This class is hidden from the booking link.${nb?` <b>${nb} student${nb===1?" is":"s are"} still booked</b> — tap Edit on each to move or cancel them.`:""}` : "Students can book this class online until it's full."; };
   document.getElementById("s_bst").onclick = e=>{ const x=e.target.closest("[data-bst]"); if(!x) return; bst=x.dataset.bst; drawBst(); };
   drawBst();
+  { const lc=document.getElementById("s_lowcancel"); if(lc) lc.onclick=async()=>{ lc.disabled=true; lc.textContent="Cancelling…";
+      const ok = await cancelLowClass(s, lowList); if(ok){ dlg.close(); } else { lc.disabled=false; lc.innerHTML="Cancel class &amp; email students"; } }; }
   const bkBox=document.getElementById("s_bk"); if(bkBox) bkBox.onclick=e=>{ const ed=e.target.closest("[data-bkedit]"); if(ed){ bkMoveDlg(ed.dataset.bkedit, ()=>{ const x=S.sessions.find(y=>y.id===s.id); if(x) sessionDlg(x); }); return; } const b=e.target.closest("[data-bkadd]"); if(!b) return; let m=member(b.dataset.bkadd);
     if(!m){ const bk0=bkFor(s.id).find(x=>x.id===b.dataset.bkid);
       if(bk0){ const nid=guestToNonMember(bk0); bk0.member_id=nid; b.dataset.bkadd=nid; m=member(nid);
