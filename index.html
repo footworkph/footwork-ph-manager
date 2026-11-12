@@ -807,10 +807,114 @@ async function loadBookings(){
     const r = await sb.from("fw_bookings").select("id,ref,class_id,class_name,starts_at,name,member_no,member_id,contact,email,note,is_member,status,pay_ref,proof_path,created_at,paid_at,confirmed_at,pay_method,amount,guest_of")
       .gte("starts_at", since).in("status",["pending","confirmed"]).order("starts_at");
     if(r.error) return;
-    const before = JSON.stringify(BK); BK = r.data||[];
-    if(JSON.stringify(BK)!==before && !dlg.open) render();
+    const before = JSON.stringify(BK)+JSON.stringify(BKX); BK = r.data||[];
+    await loadCancelled();
+    if(JSON.stringify(BK)+JSON.stringify(BKX)!==before && !dlg.open) render();
   }catch(e){}
 }
+/* ---------- cancelled classes: students affected, and what happened (rescheduled / refunded / credit) ---------- */
+let BKX = [];
+async function loadCancelled(){
+  try{
+    const since = new Date(Date.now()-45*86400*1000).toISOString();
+    const r = await sb.from("fw_bookings").select("id,ref,class_id,class_name,starts_at,name,member_no,member_id,contact,email,note,is_member,status,pay_ref,proof_path,created_at,paid_at,confirmed_at,pay_method,amount,guest_of,cancelled_by,cancel_mail_status,resolution,resolved_at")
+      .gte("created_at", since).or("and(status.eq.cancelled,cancelled_by.like.studio*),resolution.not.is.null").order("starts_at",{ascending:false});
+    if(!r.error) BKX = r.data||[];
+  }catch(e){}
+}
+const cxPaid = b => !bkFreeGuest(b) && !(isSet(b.amount) && +b.amount===0) && (!!b.paid_at || /\(paid:/.test(b.note||""));
+const cxFrom = b => { const m=String(b.resolution||"").match(/^rescheduled\|(.*)$/); return m?m[1]:""; };
+const cxKind = b => { const r=String(b.resolution||""); return r.startsWith("rescheduled")?"rescheduled":r.startsWith("refunded")?"refunded":r.startsWith("credit")?"credit":r.startsWith("none")?"none":""; };
+const cxOpen = b => !cxKind(b) && cxPaid(b);
+function cxPill(b){
+  const k=cxKind(b), extra=String(b.resolution||"").split("|").slice(1).join(" ");
+  if(k==="rescheduled") return `<span class="pill ok">Rescheduled → ${esc(bkWhen(b))}</span>`;
+  if(k==="refunded") return `<span class="pill ok">Refunded${extra?" · "+esc(extra):""}</span>`;
+  if(k==="credit") return `<span class="pill ok">Class credit</span>`;
+  if(k==="none") return `<span class="pill">Closed</span>`;
+  return cxPaid(b) ? `<span class="pill bad">Paid · needs action</span>` : `<span class="pill">Not paid · nothing to refund</span>`;
+}
+function cancelledCard(){
+  if(!sbUser || !BKX.length) return "";
+  /* group by the ORIGINAL class: for rescheduled rows the old class is saved in the resolution */
+  const key = b => cxKind(b)==="rescheduled" ? cxFrom(b) : (b.class_name||"Class")+" · "+bkWhen(b);
+  const groups = {}; BKX.forEach(b=>{ (groups[key(b)] = groups[key(b)]||[]).push(b); });
+  const openN = BKX.filter(cxOpen).length;
+  const row = b => { const k=cxKind(b); return `<li><div class="row between"><div style="min-width:0"><b>${esc(b.name)}</b> ${b.is_member?`<span class="pill pink">${esc(b.member_no||"")}</span>`:bkFreeGuest(b)?bkFreeTag(b):`<span class="pill">Guest</span>`}
+     <div class="small muted">${esc(b.contact||"No number")}${bkEmailOf(b)?" · "+esc(bkEmailOf(b)):" · No email"}</div>
+     <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${b.paid_at?` · Paid ${esc(bkStamp(b.paid_at))}`:""}${b.cancel_mail_status?` · Email ${esc(b.cancel_mail_status)}`:""}</div>
+     ${b.resolved_at?`<div class="small muted">Marked ${esc(bkStamp(b.resolved_at))}</div>`:""}</div>${cxPill(b)}</div>
+     <div class="row" style="margin-top:8px">${b.proof_path?`<button type="button" class="btn sm ghost" data-act="cxProof" data-id="${b.id}">View proof</button>`:""}
+     ${k?`<button type="button" class="btn sm ghost" data-act="cxUndo" data-id="${b.id}">Undo</button>`:`<button type="button" class="btn sm" data-act="cxMove" data-id="${b.id}">Reschedule</button>${cxPaid(b)?`<button type="button" class="btn sm ghost" data-act="cxRefund" data-id="${b.id}">Mark refunded</button><button type="button" class="btn sm ghost" data-act="cxCredit" data-id="${b.id}">Class credit</button>`:""}<button type="button" class="btn sm ghost" data-act="cxClose" data-id="${b.id}" title="Already handled / no action needed">Close</button><button type="button" class="btn sm ghost" data-act="cxCopy" data-id="${b.id}">Copy message</button>`}</div></li>`; };
+  const blocks = Object.keys(groups).map(g=>{ const list=groups[g], n=list.filter(cxOpen).length;
+    return `<details style="margin-top:8px"${n?" open":""}><summary class="small"><b>${esc(g)}</b> · ${list.length} student${list.length===1?"":"s"}${n?` <span class="pill bad">${n} to fix</span>`:` <span class="pill ok">Done</span>`}</summary><ul class="list">${list.map(row).join("")}</ul></details>`; });
+  return `<div class="card"><details${window.fwCxOpen||openN?" open":""} ontoggle="window.fwCxOpen=this.open"><summary style="cursor:pointer"><h3 style="margin:0;display:inline">Cancelled classes</h3>${openN?` <span class="pill bad">${openN} to fix</span>`:""}</summary>
+    <p class="small muted" style="margin:6px 0 4px">Students whose class the studio cancelled (last 45 days). Paid students need one of: <b>Reschedule</b>, <b>Mark refunded</b>, or <b>Class credit</b>. Reschedule moves their booking to the new class as paid. No need to pay again.</p>
+    ${blocks.join("")}</details></div>`;
+}
+async function cxSet(b, patch, msg){
+  const r = await sb.from("fw_bookings").update(Object.assign({updated_at:new Date().toISOString()}, patch)).eq("id", b.id);
+  if(r.error){ toast("Couldn't update. Check your internet."); return false; }
+  toast(msg); await loadBookings(); render(); return true;
+}
+function cxMoveDlg(id){
+  const b = BKX.find(x=>x.id===id); if(!b) return;
+  const now = Date.now(), old = (S.sessions||[]).find(x=>x.id===b.class_id);
+  const opts = (S.sessions||[]).filter(s=>s.id!==b.class_id && s.date && s.status!=="cancelled" && new Date(sesStartISO(s)).getTime()>now)
+    .sort((x,y)=>(x.date+(x.time||"")).localeCompare(y.date+(y.time||"")));
+  if(!opts.length){ toast("No upcoming classes yet. Add the new class first, then come back."); return; }
+  const label = s => { const left = s.status==="full"?0:capOf(s)-slotsTaken(s), i=instr(s.instructorId);
+    return `${new Date(s.date+"T00:00").toLocaleDateString("en-PH",{weekday:"short",month:"short",day:"numeric"})} · ${fmtTime(s.time)} · ${typeName(s)}${i?" · "+i.name:""} — ${left>0?left+" slot"+(left===1?"":"s")+" left":"FULL"}`; };
+  const paid = cxPaid(b);
+  openDlg("Reschedule cancelled booking", `
+    <p class="small" style="margin:0 0 10px"><b>${esc(b.name)}</b> · Ref ${esc(b.ref)}<br><span class="muted">Cancelled class: ${esc(b.class_name||"Class")} · ${esc(bkWhen(b))}</span></p>
+    <label class="f">Move to class<select id="cx_ses">${opts.map(s=>`<option value="${s.id}">${esc(label(s))}</option>`).join("")}</select></label>
+    <div id="cx_fullbox" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px"><p class="small" style="margin:0 0 6px"><b>This class is full.</b></p>
+      <label class="row" style="gap:8px"><input type="checkbox" id="cx_over"> <span class="small">Add anyway (over the class limit)</span></label></div>
+    <label class="row" style="gap:8px;margin-top:10px"><input type="checkbox" id="cx_mail" ${bkEmailOf(b)?"checked":"disabled"}> <span class="small">Email the new schedule to the student${bkEmailOf(b)?"":" (no email on file)"}</span></label>
+    <p class="small muted" style="margin:10px 0 0">${paid?"Booking becomes <b>Confirmed (Paid)</b> on the new class. They don't pay again.":"Not paid yet — booking goes back to <b>Waiting for payment</b> on the new class."} It's marked <b>Rescheduled</b> here.</p>`,
+  { saveLabel:"Reschedule", onSave:()=>{
+      const s=(S.sessions||[]).find(x=>x.id===document.getElementById("cx_ses").value), mail=document.getElementById("cx_mail").checked;
+      if(!s){ toast("Pick a class"); return false; }
+      if(mvFull(s) && !document.getElementById("cx_over").checked){ toast("Class is full. Tick “Add anyway” to go over the limit."); return false; }
+      const from = `${b.class_name||"Class"} · ${bkWhen(b)}`;
+      const patch = { class_id:s.id, class_name:typeName(s), starts_at:sesStartISO(s), status:paid?"confirmed":"pending", cancelled_by:null,
+        remind_mail_at:null, remind_mail_status:null, resolution:"rescheduled|"+from, resolved_at:new Date().toISOString(),
+        note:((b.note?b.note+" · ":"")+`Rescheduled from cancelled class ${from}`).slice(0,500), updated_at:new Date().toISOString() };
+      if(paid && !b.is_member && !b.member_id) patch.member_id = guestToNonMember(b);
+      const btn=document.getElementById("dlgSave"); btn.disabled=true; btn.textContent="Saving…";
+      sb.from("fw_bookings").update(patch).eq("id", b.id).then(async r=>{
+        if(r.error){ btn.disabled=false; btn.textContent="Reschedule"; toast("Couldn't reschedule. Check your internet."); return; }
+        dlg.close();
+        const nb = Object.assign({}, b, patch);
+        let msg = "Rescheduled to "+typeName(s)+" · "+bkWhen(nb);
+        if(mail && paid){ const res = await bkSendConf(nb); msg += res==="sent" ? " · email sent" : res==="queued" ? " · email queued" : " · email failed, copy the message from Online bookings"; }
+        toast(msg); await loadBookings(); render();
+      });
+      return false;
+    } });
+  const sel=document.getElementById("cx_ses"), fullBox=document.getElementById("cx_fullbox");
+  const syncFull=()=>{ const s=(S.sessions||[]).find(x=>x.id===sel.value); fullBox.style.display=s&&mvFull(s)?"":"none"; document.getElementById("cx_over").checked=false; };
+  sel.onchange=syncFull;
+  /* pre-pick: same class type, same weekday & time, 7 days later — else first open class of the same type */
+  if(old){ const want=new Date(new Date(old.date+"T00:00").getTime()+7*86400000).toISOString().slice(0,10);
+    const ses=id=>(S.sessions||[]).find(y=>y.id===id)||{};
+    const o=[...sel.options].find(o=>{ const x=ses(o.value); return x.typeId===old.typeId && x.date===want && x.time===old.time; })
+         || [...sel.options].find(o=>{ const x=ses(o.value); return x.typeId===old.typeId && !mvFull(x); });
+    if(o) sel.value=o.value; }
+  syncFull();
+}
+function cxRefund(id){
+  const b = BKX.find(x=>x.id===id); if(!b) return;
+  openDlg("Mark as refunded", `<p class="small" style="margin:0 0 10px"><b>${esc(b.name)}</b> · Ref ${esc(b.ref)}<br><span class="muted">${esc(b.class_name||"Class")} · ${esc(bkWhen(b))}</span></p>
+    <label class="f">GCash/Maya refund ref (optional)<input id="cx_rref" placeholder="e.g. 1234 567 890"></label>
+    <p class="small muted" style="margin:10px 0 0">Send the refund first, then save. The booking stays cancelled.</p>`,
+  { saveLabel:"Mark refunded", onSave:()=>{
+      const ref=document.getElementById("cx_rref").value.trim().replace(/\|/g,"");
+      cxSet(b,{resolution:"refunded"+(ref?"|ref "+ref:""), resolved_at:new Date().toISOString(), note:((b.note?b.note+" · ":"")+"Refunded"+(ref?" (ref "+ref+")":"")).slice(0,500)},"Marked refunded").then(ok=>{ if(ok) dlg.close(); });
+      return false; } });
+}
+
 const bkFor = sid => BK.filter(b=>b.class_id===sid);
 const bkPend = s => bkFor(s.id).filter(b=>b.status!=="confirmed" && !(s.attendees||[]).some(a=>a.memberId && a.memberId===b.member_id)).length;
 const pendTag = s => { const n=bkPend(s); return (n?` · ${n} to confirm`:"")+lowTag(s); };
@@ -1079,7 +1183,7 @@ async function bkSendRem(b){
   try{ const r = await mailPost({to:[to], subject:`Payment reminder: ${b.class_name||"Class"} · ${bkWhen(b)} · Footwork PH`, html:bkRemHtml(b), text:bkRemText(b)}); return r&&r.ok?"sent":"fail"; }catch(e){ return "fail"; }
 }
 async function bkProof(id){
-  const b = BK.find(x=>x.id===id); if(!b||!b.proof_path) return;
+  const b = BK.find(x=>x.id===id) || BKX.find(x=>x.id===id); if(!b||!b.proof_path) return;
   const w = window.open("", "_blank");
   const r = await sb.storage.from("fw-booking-proofs").createSignedUrl(b.proof_path, 600);
   if(r.error || !r.data){ if(w) w.close(); toast("Couldn't open the proof."); return; }
@@ -2123,14 +2227,14 @@ function statusToggles(s){
 function vSessions(){
   if(!classView) classView = lsGet("fw-cview") || "week";
   const viewSeg = `<div class="seg" role="group" aria-label="Classes view"><button type="button" data-cview="week" aria-pressed="${classView==="week"}">Week calendar</button><button type="button" data-cview="list" aria-pressed="${classView==="list"}">List and pay</button></div>`;
-  if(classView==="week") return `<div class="row between" style="margin-bottom:12px"><h2>Classes</h2><div class="row"><button class="btn lime" data-act="scan">Scan card</button><button class="btn" data-act="newSession">Add class</button></div></div>${bookingsCard()}${sbUser?payOrderCard():""}${viewSeg}${vWeek()}`;
+  if(classView==="week") return `<div class="row between" style="margin-bottom:12px"><h2>Classes</h2><div class="row"><button class="btn lime" data-act="scan">Scan card</button><button class="btn" data-act="newSession">Add class</button></div></div>${bookingsCard()}${cancelledCard()}${sbUser?payOrderCard():""}${viewSeg}${vWeek()}`;
   return vSessionList(viewSeg);
 }
 function vSessionList(viewSeg){
   const r=periodRange();
   const list = S.sessions.filter(s=>inR(s.date,r) && (!classTypeFilter || s.typeId===classTypeFilter)).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   return `<div class="row between" style="margin-bottom:12px"><h2>Classes</h2><div class="row"><button class="btn lime" data-act="scan">Scan card</button><button class="btn" data-act="newSession">Add class</button></div></div>
-  ${bookingsCard()}${sbUser?payOrderCard():""}${viewSeg}${periodBar()}
+  ${bookingsCard()}${cancelledCard()}${sbUser?payOrderCard():""}${viewSeg}${periodBar()}
   <div class="row" style="margin-bottom:12px"><label class="small muted" for="ctf">Class type</label><select id="ctf" class="sel">${typeOptions(classTypeFilter,"All classes")}</select></div>
   ${list.length?list.map(s=>{
     const c=sessionCalc(s), n=(s.attendees||[]).length, ins=instr(s.instructorId);
@@ -3654,6 +3758,15 @@ function handleAct(b){
   else if(a==="bkUnconfirm") bkSet(id,{status:"pending"},"Back to waiting for payment");
   else if(a==="bkCancel"){ const bk=BK.find(x=>x.id===id); if(confirm(`Cancel ${bk?bk.name+"'s":"this"} booking${bk?" for "+(bk.class_name||"class")+" · "+bkWhen(bk):""}? The slot opens up for others.`)) bkSet(id,{status:"cancelled",cancelled_by:"studio"},"Booking cancelled"); }
   else if(a==="bkMove") bkMoveDlg(id);
+  else if(a==="cxMove") cxMoveDlg(id);
+  else if(a==="cxRefund") cxRefund(id);
+  else if(a==="cxCredit"){ const x=BKX.find(y=>y.id===id); if(x && confirm(`Keep ${x.name}'s payment as class credit (use within ${CREDIT_DAYS} days)?`)) cxSet(x,{resolution:"credit", resolved_at:new Date().toISOString(), note:((x.note?x.note+" · ":"")+"Kept as class credit").slice(0,500)},"Marked as class credit"); }
+  else if(a==="cxClose"){ const x=BKX.find(y=>y.id===id); if(x) cxSet(x,{resolution:"none", resolved_at:new Date().toISOString()},"Closed"); }
+  else if(a==="cxUndo"){ const x=BKX.find(y=>y.id===id); if(!x) return;
+    if(cxKind(x)==="rescheduled"){ toast("Already moved to a new class. To undo, cancel it in Online bookings."); return; }
+    if(confirm(`Undo “${cxKind(x)}” for ${x.name}?`)) cxSet(x,{resolution:null, resolved_at:null},"Undone"); }
+  else if(a==="cxCopy"){ const x=BKX.find(y=>y.id===id); if(x) copyText(lowCancelText(Object.assign({},x,{status:cxPaid(x)?"confirmed":"cancelled"})),"Message copied. Paste it in Messenger."); }
+  else if(a==="cxProof") bkProof(id);
   else if(a==="bkProof") bkProof(id);
   else if(a==="bkSheet") printSheet(id);
   else if(a==="bkCopy") copyText(BOOK_URL,"Booking link copied");
