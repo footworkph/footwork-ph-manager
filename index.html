@@ -986,7 +986,10 @@ const lowPaid = b => b.status==="confirmed" && !bkFreeGuest(b) && !(isSet(b.amou
 function lowCancelText(b){
   const head = `Hi ${b.name}! This is Footwork PH.\n\nWe're sorry, your class is CANCELLED.\n\nClass: ${b.class_name||"Class"}\nWhen: ${bkWhen(b)}\nBooking ref: ${b.ref}\n\nWHY: This class did not meet the minimum of ${MIN_PAX} students needed for a class to push through.\n\n`;
   const body = lowPaid(b)
-    ? `Your payment is safe. Please choose 1 option:\n\n1) RESCHEDULE – Move to the same class on another time slot or date. Message our Facebook page (Footwork PH) with your booking ref and the day and time you want. We will move your booking. No need to pay again. See open classes: ${BOOK_URL}${b.is_member?"":"#guest"}\n\n2) REFUND – Message our Facebook page (Footwork PH) with your booking ref and your GCash/Maya number. We will send your full refund.\n\n3) CLASS CREDIT – Keep your payment as credit for any class within ${CREDIT_DAYS} days. Just message our Facebook page when you're ready to book.\n\nPlease reply on our Facebook page so we can fix your booking.`
+    ? `Your payment is safe. Please choose 1 option:\n\n1) RESCHEDULE – Move to the same class on another time slot or date.
+   • Check the open schedule here: ${BOOK_URL}${b.is_member?"":"#guest"}
+   • Then message our Facebook page (Footwork PH) with your booking ref and the day and time you picked.
+   • We will move your booking. No need to book or pay again.\n\n2) REFUND – Message our Facebook page (Footwork PH) with your booking ref and your GCash/Maya number. We will send your full refund.\n\n3) CLASS CREDIT – Keep your payment as credit for any class within ${CREDIT_DAYS} days. Just message our Facebook page when you're ready to book.\n\nPlease reply on our Facebook page so we can fix your booking.`
     : `You don't need to pay for this booking anymore.\n\nYou can pick another class or schedule here: ${BOOK_URL}${b.is_member?"":"#guest"}`;
   return head + body + `\n\nSorry for the trouble, and thank you for understanding!\n${FWC_FOOT}`;
 }
@@ -997,7 +1000,7 @@ function lowCancelHtml(b){
   const box = lowPaid(b)
     ? `<tr><td style="${F}padding:4px 18px 8px;font-size:15px;font-weight:800;color:#111">Your payment is safe. Please choose 1 option:</td></tr>
 <tr><td style="padding:0 18px 14px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f3fa;border-radius:10px">
-${opt(1,"RESCHEDULE",`Move to the same class on another time slot or date. Message our Facebook page <b>Footwork PH</b> with your booking ref and the day and time you want. We will move your booking. No need to pay again. <a href="${link}" style="color:#E8157F;font-weight:700">See open classes</a>`)}
+${opt(1,"RESCHEDULE",`Move to the same class on another time slot or date.<br>&bull; Check the open schedule using the button below.<br>&bull; Then message our Facebook page <b>Footwork PH</b> with your booking ref and the day and time you picked.<br>&bull; We will move your booking. No need to book or pay again.<div style="text-align:center;padding:12px 0 4px"><a href="${link}" target="_blank" style="${F}display:inline-block;background:#111;color:#B4FA2A;font-size:15px;font-weight:900;text-decoration:none;padding:12px 22px;border-radius:999px;border:3px solid #B4FA2A">SEE CLASS SCHEDULE</a><div style="${F}font-size:11px;color:#555;margin-top:6px;word-break:break-all">${link}</div></div>`)}
 ${opt(2,"REFUND",`Message our Facebook page <b>Footwork PH</b> with your booking ref and your GCash/Maya number. We will send your full refund.`)}
 ${opt(3,"CLASS CREDIT",`Keep your payment as credit for any class within <b>${CREDIT_DAYS} days</b>. Just message our Facebook page when you're ready to book.`)}
 </table></td></tr>`
