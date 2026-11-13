@@ -919,8 +919,10 @@ const bkFor = sid => BK.filter(b=>b.class_id===sid);
 const bkPend = s => bkFor(s.id).filter(b=>b.status!=="confirmed" && !(s.attendees||[]).some(a=>a.memberId && a.memberId===b.member_id)).length;
 const pendTag = s => { const n=bkPend(s); return (n?` · ${n} to confirm`:"")+lowTag(s); };
 /* minimum class size: under MIN_PAX paid students, the class may be merged or moved */
-const MIN_PAX = 3;
-const lowTag = s => { if(!s||s.status||!s.date) return ""; const n=slotsTaken(s); return n>0 && n<MIN_PAX && new Date(sesStartISO(s)).getTime()>Date.now() ? ` · ⚠ only ${n}, merge/move?` : ""; };
+const MIN_PAX = 3, MIN_PAX_AERO = 5;
+/* Aero Step needs 5 pax; all other classes need 3. Accepts a class (session) or a class name. */
+const minPaxOf = x => /aero\s*step/i.test(typeof x==="string" ? x : (x ? typeName(x) : "")) ? MIN_PAX_AERO : MIN_PAX;
+const lowTag = s => { if(!s||s.status||!s.date) return ""; const n=slotsTaken(s); return n>0 && n<minPaxOf(s) && new Date(sesStartISO(s)).getTime()>Date.now() ? ` · ⚠ only ${n}, merge/move?` : ""; };
 const sesFlag = (s, auto) => s && s.status==="cancelled" ? " · CANCELLED" : s && s.status==="full" ? " · FULLY BOOKED (closed)" : auto;
 const capOf = s => +(s&&s.capacity) || +S.settings.capacity || 9;
 const slotsTaken = s => { const bk=bkFor(s.id).filter(b=>b.status==="confirmed"), ids=new Set(bk.map(b=>b.member_id).filter(Boolean)); return bk.length + (s.attendees||[]).filter(a=>!ids.has(a.memberId)).length; };
@@ -1054,7 +1056,7 @@ const BK_BRING = ["Water bottle","Small towel","Extra shirt","Comfortable rubber
 function bkEmailOf(b){ const m=b.member_id&&member(b.member_id); return (b.email||(m&&m.email)||"").trim(); }
 function bkConfText(b){
   const coach = (()=>{ const s=S.sessions.find(x=>x.id===b.class_id); const i=s&&instr(s.instructorId); return i?i.name:""; })();
-  return `Hi ${b.name}! ✅ Your slot is CONFIRMED.\n\nClass: ${b.class_name||"Class"}\nWhen: ${bkWhen(b)}${coach?`\nCoach: ${coach}`:""}\nBooking ref: ${b.ref}\n\nBEFORE CLASS:\n• Come 15 minutes early and go to the counter first.\n${b.is_member?"• Show your membership card for your points and discount.":"• First-timers sign a short waiver at the counter before class."}\n\nPLEASE BRING:\n${BK_BRING.map(x=>"• "+x).join("\n")}\n\nMINIMUM CLASS SIZE: A class needs at least ${MIN_PAX} students. If fewer book, we may move you to another time slot or merge you with another class. We will message you at least 2 hours before class.\n\nReminder: Paid slots are non-refundable and non-transferable. No show = forfeited.\n\nSee you at the studio!\n${FWC_FOOT}`;
+  return `Hi ${b.name}! ✅ Your slot is CONFIRMED.\n\nClass: ${b.class_name||"Class"}\nWhen: ${bkWhen(b)}${coach?`\nCoach: ${coach}`:""}\nBooking ref: ${b.ref}\n\nBEFORE CLASS:\n• Come 15 minutes early and go to the counter first.\n${b.is_member?"• Show your membership card for your points and discount.":"• First-timers sign a short waiver at the counter before class."}\n\nPLEASE BRING:\n${BK_BRING.map(x=>"• "+x).join("\n")}\n\nMINIMUM CLASS SIZE: This class needs at least ${minPaxOf(b.class_name||"")} students. If fewer book, we may move you to another time slot or merge you with another class. We will message you at least 2 hours before class.\n\nReminder: Paid slots are non-refundable and non-transferable. No show = forfeited.\n\nSee you at the studio!\n${FWC_FOOT}`;
 }
 function bkConfHtml(b){
   const F="font-family:Arial,Helvetica,sans-serif;", s=S.sessions.find(x=>x.id===b.class_id), i=s&&instr(s.instructorId);
@@ -1069,7 +1071,7 @@ function bkConfHtml(b){
 <tr><td style="padding:0 18px 14px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f3fa;border-radius:10px"><tr><td style="${F}padding:14px 16px;font-size:14px;line-height:1.6;color:#222">
 <b style="color:#E8157F">BEFORE CLASS</b><br>• Come 15 minutes early and go to the counter first.<br>${b.is_member?"• Show your membership card for your points and discount.":"• First-timers sign a short waiver at the counter before class."}<br><br>
 <b style="color:#E8157F">PLEASE BRING</b><br>${BK_BRING.map(x=>"• "+esc(x)).join("<br>")}<br><br>
-<b style="color:#E8157F">MINIMUM CLASS SIZE</b><br>A class needs at least ${MIN_PAX} students. If fewer book, we may move you to another time slot or merge you with another class. We will message you at least 2 hours before class.</td></tr></table></td></tr>
+<b style="color:#E8157F">MINIMUM CLASS SIZE</b><br>This class needs at least ${minPaxOf(b.class_name||"")} students. If fewer book, we may move you to another time slot or merge you with another class. We will message you at least 2 hours before class.</td></tr></table></td></tr>
 <tr><td style="${F}background:#FA1294;padding:12px 16px;font-size:13px;line-height:1.45;font-weight:700;color:#fff;text-align:center">Paid slots are non-refundable and non-transferable. No show = forfeited.</td></tr>
 <tr><td style="${F}padding:14px 16px;font-size:12px;line-height:1.5;color:#555;text-align:center">${esc(FWC_FOOT)}</td></tr>
 </table></td></tr></table></body></html>`;
@@ -1084,11 +1086,11 @@ async function bkSendConf(b){
   try{ const q = await sb.rpc("fw_queue_mail", {p_booking:b.id, p_kind:"confirm", p_to:to, p_subject:mail.subject, p_html:mail.html, p_text:mail.text}); if(!q.error && q.data==="queued") return "queued"; }catch(e){}
   return "fail";
 }
-/* ---------- cancel a class below the minimum (1–2 pax) and email each student their options ---------- */
+/* ---------- cancel a class below the minimum (Aero Step: under 5 pax · other classes: under 3 pax) and email each student their options ---------- */
 const CREDIT_DAYS = 30;
 const lowPaid = b => b.status==="confirmed" && !bkFreeGuest(b) && !(isSet(b.amount) && +b.amount===0);
 function lowCancelText(b){
-  const head = `Hi ${b.name}! This is Footwork PH.\n\nWe're sorry, your class is CANCELLED.\n\nClass: ${b.class_name||"Class"}\nWhen: ${bkWhen(b)}\nBooking ref: ${b.ref}\n\nWHY: This class did not meet the minimum of ${MIN_PAX} students needed for a class to push through.\n\n`;
+  const head = `Hi ${b.name}! This is Footwork PH.\n\nWe're sorry, your class is CANCELLED.\n\nClass: ${b.class_name||"Class"}\nWhen: ${bkWhen(b)}\nBooking ref: ${b.ref}\n\nWHY: This class did not meet the minimum of ${minPaxOf(b.class_name||"")} students needed for a class to push through.\n\n`;
   const body = lowPaid(b)
     ? `Your payment is safe. Please choose 1 option:\n\n1) RESCHEDULE – Move to the same class on another time slot or date.
    • Check the open schedule here: ${BOOK_URL}${b.is_member?"":"#guest"}
@@ -1115,7 +1117,7 @@ ${opt(3,"CLASS CREDIT",`Keep your payment as credit for any class within <b>${CR
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border:3px solid #FA1294;border-radius:14px;overflow:hidden">
 <tr><td style="${F}background:#111;padding:20px 16px;text-align:center;font-size:28px;font-weight:900;font-style:italic"><span style="color:#fff">FOOT</span><span style="color:#B4FA2A">WORK</span> <span style="color:#FA1294">PH</span></td></tr>
 <tr><td style="${F}padding:20px 18px 6px;font-size:20px;font-weight:800;color:#111">&#10060; Class cancelled</td></tr>
-<tr><td style="${F}padding:0 18px 10px;font-size:15px;color:#333">Hi ${esc(b.name)}, we're sorry. Your class did not meet the minimum of <b>${MIN_PAX} students</b> needed to push through.</td></tr>
+<tr><td style="${F}padding:0 18px 10px;font-size:15px;color:#333">Hi ${esc(b.name)}, we're sorry. Your class did not meet the minimum of <b>${minPaxOf(b.class_name||"")} students</b> needed to push through.</td></tr>
 <tr><td style="padding:0 18px 12px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${row("Class",b.class_name||"Class")}${row("When",bkWhen(b))}${row("Booking ref",b.ref)}${row("Status","Cancelled (below minimum)","#E8157F")}</table></td></tr>
 ${box}
 <tr><td style="${F}background:#FA1294;padding:12px 16px;font-size:13px;line-height:1.45;font-weight:700;color:#fff;text-align:center">Sorry for the trouble, and thank you for understanding!</td></tr>
@@ -1133,14 +1135,14 @@ async function lowCancelMail(b){
 }
 async function cancelLowClass(s, list){
   const paid = list.filter(lowPaid).length;
-  if(!confirm(`Cancel this class?\n\n${typeName(s)} · ${bkWhen({starts_at:sesStartISO(s)})}\nOnly ${list.length} booked (minimum is ${MIN_PAX}).\n\n${list.map(b=>"• "+b.name+(lowPaid(b)?" (Paid)":" (Not paid)")).join("\n")}\n\nEach student gets an email.${paid?" Paid students can choose: reschedule, refund, or class credit.":""}`)) return false;
+  if(!confirm(`Cancel this class?\n\n${typeName(s)} · ${bkWhen({starts_at:sesStartISO(s)})}\nOnly ${list.length} booked (minimum is ${minPaxOf(s)}).\n\n${list.map(b=>"• "+b.name+(lowPaid(b)?" (Paid)":" (Not paid)")).join("\n")}\n\nEach student gets an email.${paid?" Paid students can choose: reschedule, refund, or class credit.":""}`)) return false;
   let sent=0, queued=0; const noMail=[];
   for(const b of list){
     const res = await lowCancelMail(b);
     if(res==="sent") sent++; else if(res==="queued") queued++; else noMail.push(b);
-    const r = await sb.from("fw_bookings").update({status:"cancelled", cancelled_by:`studio (below min ${MIN_PAX} pax)`,
+    const r = await sb.from("fw_bookings").update({status:"cancelled", cancelled_by:`studio (below min ${minPaxOf(s)} pax)`,
       cancel_mail_status: res==="sent"?"sent: low pax":res==="queued"?"queued: low pax":"not sent: "+res, cancel_mail_at:new Date().toISOString(),
-      note:((b.note?b.note+" · ":"")+`Class cancelled — below minimum ${MIN_PAX} pax${lowPaid(b)?" (paid: reschedule / refund / credit)":""}`).slice(0,500),
+      note:((b.note?b.note+" · ":"")+`Class cancelled — below minimum ${minPaxOf(s)} pax${lowPaid(b)?" (paid: reschedule / refund / credit)":""}`).slice(0,500),
       updated_at:new Date().toISOString()}).eq("id", b.id);
     if(r.error) console.warn(r.error);
   }
@@ -2364,9 +2366,11 @@ const ANN_DEFAULT = {
   subject: "Footwork PH Update: Minimum Class Size",
   body: `Hi Footwork fam!
 
-Starting today, each class needs at least ${typeof MIN_PAX!=="undefined"?MIN_PAX:3} students to push through.
+Starting today, each class needs a minimum number of students to push through:
+• Aero Step Dance: at least 5 students
+• All other classes: at least 3 students
 
-If only 1 or 2 students book a class:
+If a class does not reach its minimum:
 • We may move you to another time slot, or
 • Merge you with another class.
 
@@ -3262,7 +3266,7 @@ function sessionDlg(s, preset){
   const byName=(a,b)=>a.name.localeCompare(b.name);
   const {pct} = instRate(s);
   const lowList = isNew||s.status==="cancelled"||new Date(sesStartISO(s)).getTime()<=Date.now() ? [] : bkFor(s.id).filter(b=>b.status==="pending"||b.status==="confirmed");
-  if(lowList.length>=MIN_PAX) lowList.length=0;
+  if(lowList.length>=minPaxOf(s)) lowList.length=0;
   openDlg(isNew?"Add class":"Edit class", `
     <div class="grid2">
       <label class="f">Date<input type="date" id="s_date" value="${s.date}"></label>
@@ -3276,7 +3280,7 @@ function sessionDlg(s, preset){
     <div class="f" style="margin:4px 0 12px"><span>Online booking for this class</span>
       <div class="row" id="s_bst" style="margin-top:6px;gap:6px">${[["","Open"],["full","Mark fully booked"],["cancelled","Mark cancelled"]].map(([v,l])=>`<button type="button" class="btn sm ${(s.status||"")===v?(v==="cancelled"?"danger":""):"ghost"}" data-bst="${v}" ${(s.status||"")===v&&v==="cancelled"?'style="background:var(--bad);color:#fff"':""}>${l}</button>`).join("")}</div>
       <p class="small muted" id="s_bstnote" style="margin:6px 0 0"></p></div>
-    ${lowList.length?`<div id="s_low" style="margin:0 0 12px;padding:10px 12px;border:1px solid var(--bad);border-radius:10px;background:rgba(255,0,80,.08)"><p class="small" style="margin:0 0 8px"><b>⚠ Only ${lowList.length} booked — below the minimum of ${MIN_PAX}.</b> Cancel the class and email each student. Paid students choose: reschedule, refund, or class credit (${CREDIT_DAYS} days).</p><button type="button" class="btn sm danger" id="s_lowcancel" style="background:var(--bad);color:#fff">Cancel class &amp; email students</button></div>`:""}
+    ${lowList.length?`<div id="s_low" style="margin:0 0 12px;padding:10px 12px;border:1px solid var(--bad);border-radius:10px;background:rgba(255,0,80,.08)"><p class="small" style="margin:0 0 8px"><b>⚠ Only ${lowList.length} booked — below the minimum of ${minPaxOf(s)}.</b> Cancel the class and email each student. Paid students choose: reschedule, refund, or class credit (${CREDIT_DAYS} days).</p><button type="button" class="btn sm danger" id="s_lowcancel" style="background:var(--bad);color:#fff">Cancel class &amp; email students</button></div>`:""}
     ${bkFor(s.id).length?`<div class="row between" style="margin:8px 0 6px"><h3 style="margin:0">Booked online (${bkFor(s.id).length})</h3>${bkFor(s.id).some(b=>b.status==="confirmed")?`<button type="button" class="btn sm ghost" id="s_sheet">🖨 Sign-in sheet</button>`:""}</div><div id="s_bk" style="margin-bottom:10px">${bkFor(s.id).map(b=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><span><b>${esc(b.name)}</b> ${bkFreeGuest(b)?bkFreeTag(b):`<span class="pill ${b.status==="confirmed"?"ok":"warn"}">${b.status==="confirmed"?"Paid":"Not paid yet"}</span>`}</span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" class="btn sm ghost" data-bkedit="${b.id}">Edit</button><button type="button" class="btn sm ghost" data-bkadd="${esc(b.member_id||"")}" data-bkid="${esc(b.id)}">Check in</button></span></div>`).join("")}</div>`:""}
     <h3 style="margin:8px 0 6px">Attendance</h3>
     <div class="row" style="margin-bottom:8px">${sel("s_addm","Add a member…",S.members.filter(m=>m.type==="member").sort(byName).map(m=>`<option value="${m.id}">${esc(memLabel(m))}</option>`).join(""))}</div>
