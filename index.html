@@ -2296,6 +2296,8 @@ function schedDays(ws){
   return DOW.map((x,i)=>addDays(ws,i)).map(d=>({d, items:list.filter(s=>s.date===d)})).filter(x=>x.items.length);
 }
 const longDay = d => new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long",month:"short",day:"numeric"}).toUpperCase();
+/* Zumba note for member promo text, e.g. " (Zumba ₱100)" when Zumba's member rate is lower than the promo */
+const zumbaMemNote = promo => { const zt=S.settings.classTypes.find(t=>/^zumba$/i.test(t.name||"")); return (zt && isSet(zt.memRate) && promo!=null && +zt.memRate < +promo) ? ` (Zumba ${peso(+zt.memRate)})` : ""; };
 /* non-member reminder: book while it's discounted + member upsell + packages */
 function guestPromo(){
   const R=S.settings.rates, p=S.settings.promo, today=todayISO();
@@ -2313,7 +2315,7 @@ function guestPromo(){
   } else {
     lines.push(`Non-member rate: ${peso(+R.nonMember.reg)} per session${zNon!=null?` (Zumba ${peso(zNon)})`:""}.`);
   }
-  if(memOn) lines.push(`Members pay only <b>${peso(+R.member.promo)}</b>${p.ends?` until ${esc(fmtDate(p.ends))}`:""}. Join for ${peso(+R.membershipFee.reg||500)} (valid ${MEMBER_MONTHS} months)!`);
+  if(memOn) lines.push(`Members pay only <b>${peso(+R.member.promo)}</b>${zumbaMemNote(+R.member.promo)}${p.ends?` until ${esc(fmtDate(p.ends))}`:""}. Join for ${peso(+R.membershipFee.reg||500)} (valid ${MEMBER_MONTHS} months)!`);
   else lines.push(`Members save ${peso(Math.max(0,+R.nonMember.reg - +R.member.reg))} every session. Join for ${peso(+R.membershipFee.reg||500)} (valid ${MEMBER_MONTHS} months)!`);
   return {head, lines};
 }
@@ -2587,7 +2589,7 @@ function nonInviteHtml(note){
 <tr><td style="${F}background:#111111;padding:24px 16px;text-align:center"><div style="font-size:30px;font-weight:900;font-style:italic;letter-spacing:1px"><span style="color:#fff">FOOT</span><span style="color:${P}">WORK</span> <span style="color:${L}">PH</span></div><div style="font-size:13px;font-weight:800;color:${L};margin-top:6px;letter-spacing:2px">DANCE FITNESS STUDIO · BINANGONAN, RIZAL</div><div style="font-size:20px;font-weight:800;color:#fff;margin-top:10px">Your slot is waiting! 💃</div></td></tr>
 ${note?`<tr><td style="${F}padding:20px 20px 0;font-size:15px;line-height:1.55;color:#222">${esc(note).replace(/\n/g,"<br>")}</td></tr>`:""}
 <tr><td style="${F}padding:18px 20px 0;font-size:15px;line-height:1.55;color:#222">Thank you for registering with Footwork PH! Classes are <b>strictly by booking</b>, so reserve your slot online before you come to the studio.</td></tr>
-${d.promo?`<tr><td style="padding:18px 20px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111;border-radius:12px"><tr><td style="${F}padding:16px;text-align:center"><div style="font-size:12px;font-weight:800;color:${L};letter-spacing:2px">OPENING PROMO${(d.promo.non!=null?d.promo.nonEnds:d.promo.ends)?` · UNTIL ${esc(fmtDate(d.promo.non!=null?d.promo.nonEnds:d.promo.ends).toUpperCase())}`:""}</div>${d.promo.non!=null?`<div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.non)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · all classes</span></div>${d.promo.mem!=null?`<div style="font-size:13px;color:${L};margin-top:4px">Members pay only ${peso(d.promo.mem)}</div>`:""}`:`<div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.mem)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · MEMBERS ONLY</span></div><div style="font-size:13px;color:${L};margin-top:4px">Become a member for ${peso(d.fee)} to get the promo rate!</div>`}</td></tr></table></td></tr>`:""}
+${d.promo?`<tr><td style="padding:18px 20px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111;border-radius:12px"><tr><td style="${F}padding:16px;text-align:center"><div style="font-size:12px;font-weight:800;color:${L};letter-spacing:2px">OPENING PROMO${(d.promo.non!=null?d.promo.nonEnds:d.promo.ends)?` · UNTIL ${esc(fmtDate(d.promo.non!=null?d.promo.nonEnds:d.promo.ends).toUpperCase())}`:""}</div>${d.promo.non!=null?`<div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.non)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · all classes</span></div>${d.promo.mem!=null?`<div style="font-size:13px;color:${L};margin-top:4px">Members pay only ${peso(d.promo.mem)}${zumbaMemNote(d.promo.mem)}</div>`:""}`:`<div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.mem)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · MEMBERS ONLY${zumbaMemNote(d.promo.mem)}</span></div><div style="font-size:13px;color:${L};margin-top:4px">Become a member for ${peso(d.fee)} to get the promo rate!</div>`}</td></tr></table></td></tr>`:""}
 <tr><td align="center" style="padding:22px 20px 6px">${btn}<div style="${F}font-size:12px;color:#555;margin-top:8px;word-break:break-all">${GUEST_URL}</div></td></tr>
 ${h3("HOW TO BOOK YOUR SLOT")}
 <tr><td style="${F}padding:0 20px;font-size:14px;line-height:1.65;color:#222">
@@ -2617,7 +2619,7 @@ ${d.packs.map(x=>`<tr>${td(`<b>${esc(x.name)}</b><br><span style="font-size:12px
 function nonInviteText(note){
   const d=nonInviteData();
   return (note?note+"\n\n":"")+`FOOTWORK PH · Your slot is waiting!\n\nClasses are strictly by booking. Reserve your slot here:\n${GUEST_URL}\n\n`+
-    (d.promo?(d.promo.non!=null?`OPENING PROMO: ${peso(d.promo.non)} per session, all classes`:`MEMBERS-ONLY PROMO: ${peso(d.promo.mem)} per session. Become a member for ${peso(d.fee)} to get it`)+`${(d.promo.non!=null?d.promo.nonEnds:d.promo.ends)?` until ${fmtDate(d.promo.non!=null?d.promo.nonEnds:d.promo.ends)}`:""}.\n\n`:"")+
+    (d.promo?(d.promo.non!=null?`OPENING PROMO: ${peso(d.promo.non)} per session, all classes`:`MEMBERS-ONLY PROMO: ${peso(d.promo.mem)} per session${zumbaMemNote(d.promo.mem)}. Become a member for ${peso(d.fee)} to get it`)+`${(d.promo.non!=null?d.promo.nonEnds:d.promo.ends)?` until ${fmtDate(d.promo.non!=null?d.promo.nonEnds:d.promo.ends)}`:""}.\n\n`:"")+
     `HOW TO BOOK:\n1. Open the link above.\n2. Find your class and tap Book. Guest booking opens 24 hours before each class.\n3. Type your name, mobile and Facebook name. Tick I agree, then Reserve my slot.\n4. Pay via ${PAY_LINE}. Free classes need no payment.\n5. Send your booking and payment screenshots to our Facebook page Footwork PH.\n\n`+
     `RATES PER SESSION (non-member / member):\n`+d.rates.map(r=>`• ${r.name}: ${peso(r.non)} / ${peso(r.mem)}`).join("\n")+
     (d.packs.length?`\n\nPACKAGES (non-member / member):\n`+d.packs.map(x=>`• ${x.sessions?x.sessions+" sessions":"Unli December"} · ${x.name}: ${peso(x.price)}${x.mem!=null?" / "+peso(x.mem):""}`).join("\n"):"")+
@@ -2640,7 +2642,7 @@ function memInviteHtml(note, m){
 ${note?`<tr><td style="${F}padding:20px 20px 0;font-size:15px;line-height:1.55;color:#222">${esc(note).replace(/\n/g,"<br>")}</td></tr>`:""}
 <tr><td style="${F}padding:18px 20px 0;font-size:15px;line-height:1.55;color:#222">Hi${m&&m.name?" "+esc(String(m.name).split(" ")[0]):""}! Thank you for being a Footwork PH member. As a member, you get <b>priority booking</b>. You can book anytime, before guests can.</td></tr>
 ${idLine}
-${d.promo?`<tr><td style="padding:18px 20px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111;border-radius:12px"><tr><td style="${F}padding:16px;text-align:center"><div style="font-size:12px;font-weight:800;color:${L};letter-spacing:2px">OPENING PROMO${d.promo.ends?` · UNTIL ${esc(fmtDate(d.promo.ends).toUpperCase())}`:""}</div><div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.mem)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · member rate</span></div></td></tr></table></td></tr>`:""}
+${d.promo?`<tr><td style="padding:18px 20px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111;border-radius:12px"><tr><td style="${F}padding:16px;text-align:center"><div style="font-size:12px;font-weight:800;color:${L};letter-spacing:2px">OPENING PROMO${d.promo.ends?` · UNTIL ${esc(fmtDate(d.promo.ends).toUpperCase())}`:""}</div><div style="font-size:34px;font-weight:900;font-style:italic;color:#fff;margin-top:4px">${peso(d.promo.mem)} <span style="font-size:15px;font-style:normal;color:#ccc">per session · member rate${zumbaMemNote(d.promo.mem)}</span></div></td></tr></table></td></tr>`:""}
 <tr><td align="center" style="padding:22px 20px 6px">${btn}<div style="${F}font-size:12px;color:#555;margin-top:8px;word-break:break-all">${BOOK_URL}</div></td></tr>
 ${h3("HOW TO BOOK YOUR SLOT")}
 <tr><td style="${F}padding:0 20px;font-size:14px;line-height:1.65;color:#222">
@@ -2670,7 +2672,7 @@ function memInviteText(note, m){
   const d=nonInviteData();
   const mp = S.settings.plans.filter(x=>x.for==="member").map(x=>`• ${x.name.replace(/ \(Member\)$/,"")} · ${(x.typeIds||[]).map(id=>ctype(id)?.name).filter(Boolean).join(" · ")||"Any class"}: ${peso(+x.price)}`);
   return (note?note+"\n\n":"")+`FOOTWORK PH · Members book first!\n\n`+(m&&m.memberNo?`Your Member ID: ${m.memberNo}\n\n`:"")+
-    `Book your slot here:\n${BOOK_URL}\n\n`+(d.promo?`OPENING PROMO: ${peso(d.promo.mem)} per session for members${d.promo.ends?` until ${fmtDate(d.promo.ends)}`:""}.\n\n`:"")+
+    `Book your slot here:\n${BOOK_URL}\n\n`+(d.promo?`OPENING PROMO: ${peso(d.promo.mem)} per session for members${zumbaMemNote(d.promo.mem)}${d.promo.ends?` until ${fmtDate(d.promo.ends)}`:""}.\n\n`:"")+
     `HOW TO BOOK:\n1. Open the link above.\n2. Log in with your Member ID and registered mobile number.\n3. Find your class and tap Book.\n4. Pay via ${PAY_LINE}, then upload your proof of payment.\n5. Bring your member card to the studio.\n\n`+
     `MEMBER RATES PER SESSION:\n`+d.rates.map(r=>`• ${r.name}: ${peso(r.mem)}`).join("\n")+(mp.length?`\n\nMEMBER PACKAGES:\n`+mp.join("\n"):"")+
     `\n\nYOUR PERKS:\n`+d.perks.map(p=>"✓ "+p).join("\n")+`\n\n${FWC_FOOT}`;
