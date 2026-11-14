@@ -501,6 +501,15 @@ function seedRatesV4(st){
   set("unli_non",{days:31, validFrom:"2026-12-01", validTo:"2026-12-31"}); set("unli_mem",{days:31, validFrom:"2026-12-01", validTo:"2026-12-31"});
   st.ratesV4 = true;
 }
+/* one-time (Nov 14, 2026): Christmas Gift Pass, Unli sales end Dec 7, Dec packages cover any listed class, Unli coach pay */
+function seedPassesV6(st){
+  const set = (seed, o) => { const p=(st.plans||[]).find(x=>x.seed===seed); if(p) Object.assign(p,o); };
+  set("unli_non",{sellUntil:"2026-12-07"}); set("unli_mem",{sellUntil:"2026-12-07"});
+  ["d5_non","d5_mem","d10_non","d10_mem"].forEach(k=>set(k,{anyType:true}));
+  if(!st.plans.some(p=>p.seed==="gift5")) st.plans.push({id:"pl_gift5", seed:"gift5", name:"Christmas Gift Pass · 5 sessions", for:"", typeIds:[], price:1100, promoPrice:"", sessions:5, days:30, fromFirstClass:true, startBy:"2027-01-31", sellUntil:"2026-12-31", anyType:true});
+  if(!isSet(st.unliCoachPay)) st.unliCoachPay = 75;
+  st.passesV6 = true;
+}
 function normalize(d){
   d = d || {};
   const o = {};
@@ -518,6 +527,7 @@ function normalize(d){
   if(!st.ratesV2) seedRatesV2(st);
   if(!st.ratesV3){ st._usedPlans = (Array.isArray(d.members)?d.members:[]).map(m=>m.planId).filter(Boolean); seedRatesV3(st); delete st._usedPlans; }
   if(!st.ratesV4) seedRatesV4(st);
+  if(!st.passesV6) seedPassesV6(st);
   if(!st.ratesV5){ st.rates.nonMember.promo = 200; st.rates.nonMember.promoEnds = "2026-11-21"; st.ratesV5 = true; }
   if(!st.cap9){ st.capacity = 9; st.cap9 = true; }
   st.instructors = (st.instructors||[]).map(i=>Object.assign({pct:"",min:"",contact:"",notes:"",types:[]},i));
@@ -956,9 +966,9 @@ function bookingsCard(){
   if(!sbUser) return "";
   const byPay = (a,b)=> (bkPayAt(a)?0:1)-(bkPayAt(b)?0:1) || new Date(bkPayAt(a)||a.created_at)-new Date(bkPayAt(b)||b.created_at);
   const pend = BK.filter(b=>b.status==="pending").sort(byPay), conf = BK.filter(b=>b.status==="confirmed");
-  const row = b => `<li><div class="row between"><div style="min-width:0"><b>${esc(b.name)}</b> ${b.is_member?`<span class="pill pink">${esc(b.member_no||"")}</span>`:`${bkFreeGuest(b)?bkFreeTag(b):`<span class="pill">Guest</span>`}<div class="small muted">${esc(b.contact||"")}${b.note?" · "+esc(String(b.note).replace(/^FB:\s*/,"FB: ")):""}</div>`}
+  const row = b => `<li><div class="row between"><div style="min-width:0"><b>${esc(b.name)}</b> ${b.is_member?`<span class="pill pink">${esc(b.member_no||"")}</span>`:`${bkFreeGuest(b)?bkFreeTag(b):b.pay_method==="package"?`<span class="pill ok">🎟 Pass</span>`:`<span class="pill">Guest</span>`}<div class="small muted">${esc(b.contact||"")}${b.note?" · "+esc(String(b.note).replace(/^FB:\s*/,"FB: ")):""}</div>`}
      <div class="small">${esc(b.class_name||"Class")} · ${esc(bkWhen(b))}</div>
-     <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${bkFreeGuest(b)?" · <b>Free · no payment needed</b>":b.proof_path?"":" · No screenshot yet"}${b.paid_at?` · <b>Paid ${esc(bkStamp(b.paid_at))}</b>`:""}</div>${b.status==="pending"?`<div class="small muted">${bkEmailOf(b)?"Email: "+esc(bkEmailOf(b)):"No email on file"}${bkRemAt(b)?` · <b>Reminder sent ${esc(bkRemAt(b))}</b>`:""}</div>`:""}</div>
+     <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${bkFreeGuest(b)?" · <b>Free · no payment needed</b>":b.pay_method==="package"?" · <b>🎟 Pass · no payment needed</b>":b.proof_path?"":" · No screenshot yet"}${b.paid_at?` · <b>Paid ${esc(bkStamp(b.paid_at))}</b>`:""}</div>${b.status==="pending"?`<div class="small muted">${bkEmailOf(b)?"Email: "+esc(bkEmailOf(b)):"No email on file"}${bkRemAt(b)?` · <b>Reminder sent ${esc(bkRemAt(b))}</b>`:""}</div>`:""}</div>
      <span class="pill ${b.status==="confirmed"?"ok":bkPast(b)?"bad":"warn"}">${b.status==="confirmed"?"Confirmed":bkPast(b)?"Class done · unpaid":"Waiting for payment"}</span></div>
      ${bkPast(b)?`<div class="small" style="margin-top:6px;color:#c0392b"><b>⏱ Class date has passed.</b> Buttons are locked.</div>`:""}<div class="row" style="margin-top:8px">${bkLock(b,`${b.proof_path?`<button type="button" class="btn sm ghost" data-act="bkProof" data-id="${b.id}">View proof</button>`:""}
      ${b.status==="pending"?`<button type="button" class="btn sm" data-act="bkConfirm" data-id="${b.id}">Paid · Confirm</button>${bkEmailOf(b)?`<button type="button" class="btn sm ghost" data-act="bkRemind" data-id="${b.id}">Email payment reminder</button>`:""}<button type="button" class="btn sm ghost" data-act="bkRemindCopy" data-id="${b.id}">Copy reminder</button>`:`<button type="button" class="btn sm ghost" data-act="bkMsg" data-id="${b.id}">Copy message</button><button type="button" class="btn sm ghost" data-act="bkResend" data-id="${b.id}">${bkEmailOf(b)?"Resend email":"No email"}</button><button type="button" class="btn sm ghost" data-act="bkUnconfirm" data-id="${b.id}">Undo confirm</button>`}
@@ -1964,7 +1974,20 @@ const rate = (key, typeId) => {
 };
 /* packages: for members or non-members, one class type, counted only when used */
 const pkgUsed = m => S.sessions.reduce((a,s)=>a+(s.attendees||[]).filter(x=>x.memberId===m.id && x.pkg && (!m.startDate || s.date>=m.startDate)).length,0);
-const pkgExp = (m,p) => { if(!p) return null; let e = m.startDate && +p.days ? addDays(m.startDate, +p.days) : null; if(p.validTo && (!e || p.validTo < e)) e = p.validTo; return e; };
+/* date of the first class used with the package (attendance) */
+const pkgFirst = m => S.sessions.filter(s=>(s.attendees||[]).some(x=>x.memberId===m.id && x.pkg) && (!m.startDate || s.date>=m.startDate)).map(s=>s.date).sort()[0] || "";
+const pkgExp = (m,p,onDate) => { if(!p) return null; let e = null;
+  if(p.fromFirstClass){ const f = pkgFirst(m) || onDate || ""; e = f && +p.days ? addDays(f, +p.days) : null; }
+  else e = m.startDate && +p.days ? addDays(m.startDate, +p.days) : null;
+  if(p.validTo && (!e || p.validTo < e)) e = p.validTo; return e; };
+const isUnliPlan = p => !!p && !(+p.sessions);
+/* pass code for the booking page: UNLI-XXXX / GIFT-XXXX / PASS-XXXX */
+function newPassCode(p){
+  const pre = isUnliPlan(p) ? "UNLI" : (p && p.seed==="gift5") || /gift/i.test((p&&p.name)||"") ? "GIFT" : "PASS";
+  const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; let c;
+  do { c = pre+"-"+Array.from({length:5},()=>A[Math.floor(Math.random()*A.length)]).join(""); } while(S.members.some(x=>x.passCode===c));
+  return c;
+}
 /* package validity text: fixed date window if set, else "use within N days" */
 const planWin = p => { const f=p.validFrom, t=p.validTo; if(f&&t) return `valid ${shortD(f)}–${shortD(t)}`; if(t) return `valid until ${shortD(t)}`; return `use within ${p.days} days`; };
 function pkgFor(m, s){
@@ -1973,16 +1996,18 @@ function pkgFor(m, s){
   if(p.for && p.for!==kind) return null;
   const types = m.planType ? [m.planType] : (p.typeIds||[]);
   if(types.length && !types.includes(s.typeId)) return null;
+  if(ctype(s.typeId)?.free) return null;
   if(m.startDate && s.date < m.startDate) return null;
   if(p.validFrom && s.date < p.validFrom) return null;
-  const exp = pkgExp(m,p); if(exp && s.date > exp) return null;
+  if(p.startBy && !pkgFirst(m) && s.date > p.startBy) return null;
+  const exp = pkgExp(m,p,s.date); if(exp && s.date > exp) return null;
   if(+p.sessions && pkgUsed(m) >= +p.sessions) return null;
   const paid = +m.paid>0 ? +m.paid : planPrice(p);
-  return { amount: +p.sessions ? paid/(+p.sessions) : 0 };
+  return { amount: +p.sessions ? paid/(+p.sessions) : 0, unli: isUnliPlan(p) };
 }
 function priceFor(m, s, kind){
   const pk = pkgFor(m, s);
-  if(pk) return { amount: Math.round(pk.amount*100)/100, pkg:true };
+  if(pk) return { amount: Math.round(pk.amount*100)/100, pkg:true, unli:!!pk.unli };
   return { amount: rate(kind==="member"?"member":"nonMember", s && s.typeId), pkg:false };
 }
 const planPrice = p => promoOn() && isSet(p.promoPrice) ? +p.promoPrice : (+p.price||0);
@@ -2073,9 +2098,13 @@ function sessionCalc(s){
     inst = pays ? Math.max(byPct, min) : 0;
     usedMin = pays && inst>byPct && inst>0;
   }
+  /* Unli Pass students add nothing to sales, so % coaches get a fixed amount per Unli student */
+  const unliN = (s.attendees||[]).filter(a=>a.unli).length;
+  const unliPay = mode==="pct" && pays ? unliN*(+S.settings.unliCoachPay||0) : 0;
+  inst += unliPay;
   const effPct = mode==="pct" ? pct : (gross>0 ? Math.round(inst/gross*100) : 0);
-  const note = mode==="class" ? `fixed ${peso(rate)}/class` : mode==="day" ? `fixed ${peso(rate)}/day${dayShare>1?` ÷ ${dayShare} classes`:""}` : "";
-  return { gross, pct:effPct, inst, biz: gross-inst, usedMin, absent, mode, note };
+  const note = (mode==="class" ? `fixed ${peso(rate)}/class` : mode==="day" ? `fixed ${peso(rate)}/day${dayShare>1?` ÷ ${dayShare} classes`:""}` : "") + (unliPay ? `${mode==="pct"?"":" · "}+ ${peso(unliPay)} Unli (${unliN} × ${peso(+S.settings.unliCoachPay||0)})` : "");
+  return { gross, pct:effPct, inst, biz: gross-inst, usedMin, absent, mode, note, unliN, unliPay };
 }
 function expectedCalc(s){
   const done = new Set((s.attendees||[]).map(a=>a.memberId));
@@ -2083,8 +2112,9 @@ function expectedCalc(s){
     let m = b.member_id && member(b.member_id);
     if(m && m.type!=="member") m = memberMatch(m) || memberMatch(b) || m;
     const kind = m ? (m.type==="member"?"member":"nonmember") : (b.is_member?"member":"nonmember");
-    const amt = bkFreeGuest(b) ? fgCredit(s) : isSet(b.amount) && +b.amount===0 ? 0 : (m ? priceFor(m, s, kind).amount : rate(kind==="member"?"member":"nonMember", s.typeId));
-    return {memberId:b.member_id||("bk_"+b.id), kind, amount:Math.round((+amt||0)*100)/100};
+    const pr = !bkFreeGuest(b) && !(isSet(b.amount) && +b.amount===0) && m ? priceFor(m, s, kind) : null;
+    const amt = bkFreeGuest(b) ? fgCredit(s) : isSet(b.amount) && +b.amount===0 ? 0 : (pr ? pr.amount : rate(kind==="member"?"member":"nonMember", s.typeId));
+    return Object.assign({memberId:b.member_id||("bk_"+b.id), kind, amount:Math.round((+amt||0)*100)/100}, pr&&pr.unli?{unli:true}:{});
   });
   const c = sessionCalc(Object.assign({}, s, {attendees:(s.attendees||[]).concat(extra)}));
   c.pending = extra.length; return c;
@@ -2992,7 +3022,9 @@ function vSettings(){
       <label class="f">Studio share (%)<input type="number" min="0" max="100" data-set="studioPct" value="${100-(+st.instructorPct||0)}"></label>
       <label class="f">Minimum instructor pay per class (₱)<input type="number" min="0" data-set="minPerClass" value="${st.minPerClass}"></label>
       <label class="f">Max students per class<input type="number" min="1" data-set="capacity" value="${st.capacity}"></label>
+      <label class="f">Unli Pass: coach pay per student (₱)<input type="number" min="0" data-set="unliCoachPay" value="${st.unliCoachPay}"></label>
     </div>
+    <p class="small muted" style="margin:0 0 6px">Unli Pass students add ₱0 to class sales. Coaches on a % split get this fixed amount for each Unli student in their class. Fixed-rate coaches are not affected.</p>
     <p class="small muted" style="margin:0">Default for everyone. You can set a different split per instructor or per class.</p>
   </div>
   <div class="card"><div class="row between" style="margin-bottom:8px"><h3>Member packages</h3><button class="btn sm" data-act="newPlan">Add package</button></div>
@@ -3043,12 +3075,17 @@ function openDlg(title, body, {onSave, onDelete, saveLabel="Save", noFoot=false}
 const val = id => document.getElementById(id).value.trim();
 
 /* package picker, shared by the member and non-member forms */
+/* how many students hold this package (sold count) */
+const planSold = p => S.members.filter(m=>m.planId===p.id).length;
+const planOnSale = p => !p.sellUntil || todayISO() <= p.sellUntil;
 function pkgBlock(m, kind){
-  const plans = S.settings.plans.filter(p=>!p.for || p.for===kind || p.id===m.planId);
+  const plans = S.settings.plans.filter(p=>(!p.for || p.for===kind || p.id===m.planId) && (planOnSale(p) || p.id===m.planId));
   const fallback = kind==="member" ? rate("member") : rate("nonMember");
   return `<div class="cbox"><b class="small">Package</b>
-    <label class="f" style="margin-top:8px">Package<select id="m_plan"><option value="">No package (pay per session, ${peso(fallback)})</option>${plans.map(p=>`<option value="${p.id}" ${p.id===m.planId?"selected":""}>${esc(p.name)} — ${peso(planPrice(p))}</option>`).join("")}</select></label>
+    <label class="f" style="margin-top:8px">Package<select id="m_plan"><option value="">No package (pay per session, ${peso(fallback)})</option>${plans.map(p=>`<option value="${p.id}" ${p.id===m.planId?"selected":""}>${esc(p.name)} — ${peso(planPrice(p))}${p.sellUntil?` · sales end ${shortD(p.sellUntil)}`:""}${isUnliPlan(p)?` · ${planSold(p)} sold`:""}</option>`).join("")}</select></label>
     <label class="f" id="m_ptypeWrap">Class type for this package<select id="m_ptype"></select></label>
+    <div id="m_giftWrap" class="grid2"><label class="f">Gift from (buyer's name)<input id="m_giftFrom" value="${esc(m.giftFrom||"")}"></label><label class="f">Buyer's contact no.<input id="m_giftFromNo" value="${esc(m.giftFromNo||"")}" inputmode="tel"></label></div>
+    ${m.passCode&&m.planId?`<div class="small" style="margin:4px 0 8px">Pass code for the booking page: <b style="font-size:15px;letter-spacing:1px">${esc(m.passCode)}</b> <button type="button" class="btn sm ghost" id="m_passCopy">Copy pass message</button></div>`:""}
     <div class="grid2">
       <label class="f">Package start<input type="date" id="m_start" value="${m.startDate||todayISO()}"></label>
       <label class="f">Package amount paid (₱)<input type="number" min="0" id="m_paid" value="${m.paid}"></label>
@@ -3061,10 +3098,23 @@ function wirePkg(m){
   const draw = first => {
     const p = plan(ps.value), ids = p ? (p.typeIds||[]) : [];
     tw.style.display = ids.length ? "" : "none";
-    ts.innerHTML = (ids.length>1?`<option value="">Pick one…</option>`:"") + ids.map(id=>`<option value="${id}" ${id===m.planType?"selected":""}>${esc(ctype(id)?.name||"?")}</option>`).join("");
+    ts.innerHTML = (ids.length>1?(p&&p.anyType?`<option value="">Any of these classes</option>`:`<option value="">Pick one…</option>`):"") + ids.map(id=>`<option value="${id}" ${id===m.planType?"selected":""}>${esc(ctype(id)?.name||"?")}</option>`).join("");
     if(!first && p) paid.value = planPrice(p);
+    const gw=document.getElementById("m_giftWrap"); if(gw) gw.style.display = p && (p.seed==="gift5" || /gift/i.test(p.name||"")) ? "" : "none";
   };
   ps.onchange = ()=>draw(false); draw(true);
+  const pc=document.getElementById("m_passCopy"); if(pc) pc.onclick=()=>{ const t=passMsg(m); try{ navigator.clipboard.writeText(t).then(()=>toast("Pass message copied")); }catch(e){ prompt("Copy this message", t); } };
+}
+/* message to send a pass holder: how to book with their pass */
+function passMsg(m){
+  const p = plan(m.planId); if(!p) return "";
+  const mem = m.type==="member" && !cardExpired(m);
+  const unli = isUnliPlan(p);
+  const valid = p.fromFirstClass ? `Valid ${p.days} days from your first class${p.startBy?` (first class on or before ${fmtDate(p.startBy)})`:""}.` : (()=>{ const e=pkgExp(m,p); return e?`Valid until ${fmtDate(e)}.`:""; })();
+  return `Hi ${(m.name||"").split(" ")[0]}! Your ${p.name} is now active. 🎉\n\n`+
+    (mem ? `Book your classes here:\n${BOOK_URL}\nLog in with your Member ID (${m.memberNo}) and mobile number. Classes covered by your pass are confirmed right away. No payment needed.\n\n`
+         : `Book your classes here:\n${BOOK_URL}#guest\nTap Book, fill in your details, and type your pass code:\n${m.passCode}\nUse the same mobile number you gave us (${m.contact||"on file"}). Classes covered by your pass are confirmed right away. No payment needed.\n\n`)+
+    `${unli?"Unli Pass rules: book a slot for every class, max 2 classes a day. 2 no-shows pause your booking for 3 days.":`${p.sessions} sessions. A no-show uses up 1 session.`} ${valid} For you only, non-transferable and non-refundable. Cancel or move a class at least 24 hours before.\n\nSee you in class! 💃\n- Footwork PH`;
 }
 function personDlg(m, type){
   const isNew=!m; type = m ? m.type : type;
@@ -3151,9 +3201,14 @@ function personDlg(m, type){
         if(val("m_jfee")==="" || !(+val("m_jfee")>=0)){ toast("Enter the membership fee paid"); return false; }
       }
       { const pid=val("m_plan"), pp=plan(pid);
-        if(pp && (pp.typeIds||[]).length>1 && !val("m_ptype")){ toast("Pick the class type for this package"); return false; }
+        if(pp && !pp.anyType && (pp.typeIds||[]).length>1 && !val("m_ptype")){ toast("Pick the class type for this package"); return false; }
         if(pp && !val("m_start")){ toast("Enter the package start date"); return false; }
-        Object.assign(m,{planId:pid, planType: pp ? (val("m_ptype") || (pp.typeIds||[])[0] || "") : "", startDate:val("m_start"), paid:+val("m_paid")||0, paidDate:val("m_paidDate")}); }
+        if(pp && pid!==m.planId && !planOnSale(pp)){ toast(`${pp.name} sales ended ${shortD(pp.sellUntil)}`); return false; }
+        const changed = pid !== m.planId;
+        Object.assign(m,{planId:pid, planType: pp ? (val("m_ptype") || (pp.anyType ? "" : (pp.typeIds||[])[0] || "")) : "", startDate:val("m_start"), paid:+val("m_paid")||0, paidDate:val("m_paidDate")});
+        if(pp && (changed || !m.passCode)) m.passCode = newPassCode(pp);
+        if(!pp) delete m.passCode;
+        const gf=document.getElementById("m_giftFrom"); if(gf && pp && (pp.seed==="gift5" || /gift/i.test(pp.name||""))){ m.giftFrom=gf.value.trim(); m.giftFromNo=val("m_giftFromNo").trim(); } }
       if(!mem){
         m.interests = [...document.querySelectorAll('input[name="m_interest"]:checked')].map(x=>x.value);
         Object.assign(m,{email:val("m_email").trim(), birthday:val("m_bday"), ecName:val("m_ecName"), ecNo:val("m_ecNo")});
@@ -3260,7 +3315,7 @@ function sessionDlg(s, preset){
     box.querySelectorAll("[data-kind]").forEach(b=>b.onclick=()=>{ const a=s.attendees[+b.dataset.kind]; a.kind = a.kind==="member"?"nonmember":"member";
       const m=member(a.memberId)||newNon.find(n=>n.id===a.memberId); s.typeId=val("s_type");
       const pr = m ? priceFor(m, s, a.kind) : {amount:rate(a.kind==="member"?"member":"nonMember", s.typeId), pkg:false};
-      a.amount=a.freeGuestOf?fgCredit(s):Math.round(pr.amount*100)/100; if(pr.pkg&&!a.freeGuestOf) a.pkg=true; else delete a.pkg;
+      a.amount=a.freeGuestOf?fgCredit(s):Math.round(pr.amount*100)/100; if(pr.pkg&&!a.freeGuestOf) a.pkg=true; else delete a.pkg; if(pr.unli&&!a.freeGuestOf) a.unli=true; else delete a.unli;
       drawAtt(); toast(`Changed to ${a.kind==="member"?"member":"non-member"} · ${peso(a.amount)} — tap Save`); });
     document.querySelectorAll("#s_bk [data-bkadd]").forEach(b=>{ const done = !!b.dataset.bkadd && s.attendees.some(a=>a.memberId===b.dataset.bkadd);
       b.textContent = done ? "✓ Checked in" : "Check in";
@@ -3321,7 +3376,7 @@ function sessionDlg(s, preset){
     s.typeId = val("s_type"); s.date = val("s_date") || s.date;
     const pr = priceFor(m, s, kind);
     const bkx = bkFor(s.id).find(b=>b.member_id===m.id), freeBk = bkx && isSet(bkx.amount) && +bkx.amount===0;
-    s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind, amount:bkFreeGuest(bkx)?fgCredit(s):freeBk?0:Math.round(pr.amount*100)/100}, pr.pkg&&!freeBk?{pkg:true}:{}, bkFreeGuest(bkx)?{freeGuestOf:bkx.guest_of}:{})); drawAtt();
+    s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind, amount:bkFreeGuest(bkx)?fgCredit(s):freeBk?0:Math.round(pr.amount*100)/100}, pr.pkg&&!freeBk?{pkg:true}:{}, pr.unli&&!freeBk?{unli:true}:{}, bkFreeGuest(bkx)?{freeGuestOf:bkx.guest_of}:{})); drawAtt();
     toast(m.name+" checked in ✓"+(bkFreeGuest(bkx)?` · ${bkx.guest_of} - free guest · counted ${peso(fgCredit(s))} for coach`:freeBk?" · free · ₱0":"")+" — tap Save to keep it");
   };
   { const sh=document.getElementById("s_sheet"); if(sh) sh.onclick=()=>printSheet(s.id); }
@@ -3427,7 +3482,7 @@ function scanDlg(preId){
     const over = slotsTaken(s) > capOf(s);
     const pr = priceFor(m, s, active?"member":"nonmember");
     const amount = Math.round(pr.amount*100)/100;
-    s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind:active?"member":"nonmember", amount, via, at:new Date().toISOString()}, pr.pkg?{pkg:true}:{}));
+    s.attendees.push(Object.assign({memberId:m.id, name:m.name, kind:active?"member":"nonmember", amount, via, at:new Date().toISOString()}, pr.pkg?{pkg:true}:{}, pr.unli?{unli:true}:{}));
     save();
     show({cls:"ok", title:"Checked in", m, text:`${classLabel(s)} · ${peso(amount)}${over?" · Class is over capacity":""}`, btn:"undo", btnLabel:"Undo"});
   };
@@ -3745,13 +3800,18 @@ function planDlg(p){
       <label class="f">Valid for (days)<input type="number" min="1" id="p_days" value="${p.days}"></label>
       <label class="f">Valid from (optional)<input type="date" id="p_from" value="${p.validFrom||""}"></label>
       <label class="f">Valid until (optional)<input type="date" id="p_to" value="${p.validTo||""}"></label>
+      <label class="f">Stop selling after (optional)<input type="date" id="p_sell" value="${p.sellUntil||""}"></label>
+      <label class="f">First class must be on or before (optional)<input type="date" id="p_startby" value="${p.startBy||""}"></label>
     </div>
+    <label class="check"><input type="checkbox" id="p_first" ${p.fromFirstClass?"checked":""}> Count the valid days from the student's first class (good for gift passes)</label>
+    <label class="check"><input type="checkbox" id="p_any" ${p.anyType?"checked":""}> Student can use any of the class types above (not just one)</label>
     <p class="small muted">Use the dates for fixed windows like Dec 1–30. Sessions before "Valid from" or after "Valid until" are not covered.</p>`,
   { onSave:()=>{
       if(!val("p_name")){ toast("Enter a package name"); return false; }
       const pr=val("p_promo");
       Object.assign(p,{name:val("p_name"), price:+val("p_price")||0, promoPrice:pr===""?"":+pr, sessions:+val("p_ses")||0, days:+val("p_days")||30,
-        validFrom:val("p_from"), validTo:val("p_to"), for:val("p_for"), typeIds:[...document.querySelectorAll('input[name="p_type"]:checked')].map(x=>x.value)});
+        validFrom:val("p_from"), validTo:val("p_to"), sellUntil:val("p_sell"), startBy:val("p_startby"), fromFirstClass:document.getElementById("p_first").checked, anyType:document.getElementById("p_any").checked,
+        for:val("p_for"), typeIds:[...document.querySelectorAll('input[name="p_type"]:checked')].map(x=>x.value)});
       if(isNew) S.settings.plans.push(p);
     },
     onDelete: isNew?null:()=>{ S.settings.plans=S.settings.plans.filter(x=>x.id!==p.id); } });
