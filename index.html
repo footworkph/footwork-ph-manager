@@ -1477,7 +1477,7 @@ const fwdCell = (lab,val,span) => `<td${span?` colspan="${span}"`:""}><div class
 function ackData(s){
   const c = sessionCalc(s), ins = instr(s.instructorId);
   const rows = (s.attendees||[]).map(a=>{ const m = member(a.memberId);
-    return { name:(m&&m.name)||a.name||"Student", kind: a.freeGuestOf ? "Free guest" : a.pkg ? "Package" : a.kind==="nonmember" ? "Non-member" : "Member", amount:a.freeGuestOf?0:(+a.amount||0) }; });
+    return { name:(m&&m.name)||a.name||"Student", kind: a.freeGuestOf ? "Free guest" : a.pkg ? "Package" : a.kind==="nonmember" ? "Non-member" : "Member", amount:a.freeGuestOf?0:(+a.amount||0), fg:a.freeGuestOf||"" }; });
   const coachPct = c.mode==="pct" && !c.usedMin ? c.pct : (c.gross+c.fg)>0 ? Math.round(c.inst/(c.gross+c.fg)*1000)/10 : 0;
   return { docKind:"ackr", name: ins ? ins.name : "Coach", date:s.date, time:s.time, cls:typeName(s), rows, c,
     basis: c.absent ? "Coach absent — no pay" : c.mode==="pct" ? `${c.pct}% coach / ${100-c.pct}% studio${c.usedMin?" (minimum per class applied)":""}` : `Fixed rate: ${c.note}`,
@@ -1487,7 +1487,7 @@ function ackData(s){
 }
 function ackPages(d){
   const c = d.c;
-  const body = d.rows.length ? d.rows.map((r,i)=>`<tr><td class="c">${i+1}</td><td>${esc(r.name)}</td><td>${r.kind}</td><td class="r">${peso(r.amount)}</td></tr>`).join("")
+  const body = d.rows.length ? d.rows.map((r,i)=>`<tr><td class="c">${i+1}</td><td>${esc(r.name)}${r.fg?`<br><small>${esc(r.fg)} - free guest · not collected</small>`:""}</td><td>${r.kind}</td><td class="r">${r.fg?`₱0<br><small>Coach: ${peso(c.fgN?c.fgPay/c.fgN:0)} (studio pays)</small>`:peso(r.amount)}</td></tr>`).join("")
     : `<tr><td colspan="4" class="c">No students checked in.</td></tr>`;
   return `<section class="fwc-page">${fwdHead("ACKNOWLEDGEMENT RECEIPT","COACH FEE")}
     <table class="fwc-det"><tr>${fwdCell("Receipt no.",esc(d.no))}${fwdCell("Class date",esc(fmtDate(d.date)))}${fwdCell("Class time",esc(fmtTime(d.time)))}</tr>
@@ -1497,10 +1497,11 @@ function ackPages(d){
     <table class="fwa-t"><thead><tr><th style="width:9%" class="c">#</th><th style="width:49%">Student</th><th style="width:20%">Type</th><th style="width:22%" class="r">Amount paid</th></tr></thead>
       <tbody>${body}</tbody></table>
     <table class="fwa-sum">
-      <tr><td>Total class sales (${d.rows.length} checked in)</td><td class="r">${peso(c.gross)}</td></tr>
-      ${c.fg?`<tr><td>Free guest credit (${c.fgN}) · not collected, studio pays coach share</td><td class="r">${peso(c.fg)}</td></tr>`:""}
-      <tr class="coach"><td>Coach share · ${d.coachPct}%</td><td class="r">${peso(c.inst)}</td></tr>
-      <tr class="studio"><td>Studio share · ${d.studioPct}%</td><td class="r">${peso(c.biz)}</td></tr></table>
+      <tr><td>Total class sales collected (${d.rows.length-c.fgN} paid${c.fgN?` + ${c.fgN} free guest`:""})</td><td class="r">${peso(c.gross)}</td></tr>
+      ${c.fg?`<tr><td>Coach share from paid students</td><td class="r">${peso(c.inst-c.fgPay)}</td></tr>
+      <tr><td>Coach share from free guest (${c.fgN} × ${peso(c.fgN?c.fgPay/c.fgN:0)}) · paid by studio</td><td class="r">${peso(c.fgPay)}</td></tr>`:""}
+      <tr class="coach"><td>${c.fg?"Total coach fee":`Coach share · ${d.coachPct}%`}</td><td class="r">${peso(c.inst)}</td></tr>
+      <tr class="studio"><td>Studio share${c.fg?" (sales collected − total coach fee)":` · ${d.studioPct}%`}</td><td class="r">${peso(c.biz)}</td></tr></table>
     <div class="fwa-ack">I, <b>${esc(d.name)}</b>, acknowledge that I received <b>${peso(c.inst)}</b> as my coach fee for the class above. I have seen the list of checked-in students and the percentage split used to compute my fee.</div>
     <div class="fwa-sig"><div><b>${esc(d.name)}</b>Received by (Coach) · Signature &amp; date</div><div><b>Footwork PH Management</b>Released by · Signature &amp; date</div></div>
     <div class="fwc-ft">Printed ${esc(d.printed)} · ${esc(FWC_FOOT)}</div></section>`;
