@@ -2403,7 +2403,37 @@ async function mailPost(payload){
   return r.json();
 }
 /* ---------- announcement: email any message to members, non-members and online bookers ---------- */
-const ANN_DEFAULT = {
+const ANN_TEMPLATES = [
+ { id:"dec", label:"December Promo 2026", members:true,
+  subject: "December Promo: New Rates + Holiday Packages",
+  body: `Hi Footwork fam! 🎄
+
+Our DECEMBER PROMO starts December 1, 2026!
+
+RATES PER SESSION (starting Dec 1)
+• All classes (Aero Step, Hip Hop, K-Pop, Femme, Kids Dance): ₱250 non-member / ₱200 member
+• Zumba: ₱150 non-member / ₱100 member
+
+HOLIDAY PACKAGES (save more when you book more)
+• 5 Sessions, use within 15 days: ₱1,100 non-member / ₱900 member
+• 10 Sessions, valid Dec 1 to 30: ₱2,000 non-member / ₱1,600 member
+• UNLI Holiday December, all classes, Dec 1 to 31, up to 2 classes a day: ₱2,500 non-member / ₱2,000 member
+
+🔥 GRAB YOUR UNLI PASS EARLY! Unli December Pass sales end on December 7, 2026.
+
+As a member, you always get the lower member price. Thank you for stepping with us! 💖
+
+Package rules:
+• For the named person only. Non-transferable and non-refundable.
+• 5 and 10 sessions are for all classes except Zumba.
+• Unli Pass: book a slot for every class, max 2 classes a day. 2 no-shows pause your booking for 3 days.
+• Classes are by appointment only.
+
+To avail a package, message us on Facebook: Footwork PH, or call 0933 855 2646 / 0919 002 6419.
+
+See you at the studio!`
+ },
+ { id:"min", label:"Minimum class size", members:false,
   subject: "Footwork PH Update: Minimum Class Size",
   body: `Hi Footwork fam!
 
@@ -2421,7 +2451,10 @@ If a class does not reach its minimum:
 Want your class to push through? Book early and bring a friend!
 
 Thank you for understanding. See you at the studio!`
-};
+ },
+ { id:"blank", label:"Blank (write your own)", members:false, subject:"", body:"" }
+];
+const ANN_DEFAULT = ANN_TEMPLATES[0];
 function annHtml(subject, body){
   const F="font-family:Arial,Helvetica,sans-serif;";
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body style="margin:0;padding:0;background:#f3f0f5">
@@ -2446,6 +2479,7 @@ async function announceDlg(){
   const rcp = (id,name,email) => `<label class="rcp"><input type="checkbox" data-ann="${esc(id)}" data-em="${esc(email.trim().toLowerCase())}" checked><span class="nm"><b>${esc(name)}</b><br><span class="small muted">${esc(email.trim())}</span></span></label>`;
   const group = (key,title,list) => list.length ? `<details style="margin-top:8px"><summary class="small"><b>${title} (${list.length})</b> · <a href="#" data-grp="${key}" data-on="1">tick all</a> · <a href="#" data-grp="${key}" data-on="0">untick all</a></summary><div data-g="${key}">${list.map(m=>rcp(m.id,m.name,m.email)).join("")}</div></details>` : "";
   openDlg("📢 Send announcement", `
+    <label class="f">Template<select id="an_tpl" class="sel">${ANN_TEMPLATES.map(t=>`<option value="${t.id}">${esc(t.label)}</option>`).join("")}</select></label>
     <label class="f">Subject<input id="an_subj" value="${esc(ANN_DEFAULT.subject)}"></label>
     <label class="f">Message<textarea id="an_body" rows="12">${esc(ANN_DEFAULT.body)}</textarea></label>
     <div class="row" style="margin:0 0 8px"><button type="button" class="btn sm ghost" id="an_copy">Copy for Viber / Facebook</button></div>
@@ -2473,6 +2507,10 @@ async function announceDlg(){
   const prev=()=>{ const f=document.getElementById("an_prev"); if(f) f.srcdoc=annHtml(val("an_subj")||ANN_DEFAULT.subject, document.getElementById("an_body").value); };
   body.onclick=e=>{ const a=e.target.closest("[data-grp]"); if(!a) return; e.preventDefault(); body.querySelectorAll(`[data-g="${a.dataset.grp}"] [data-ann]`).forEach(x=>x.checked=a.dataset.on==="1"); count(); };
   body.onchange=count;
+  /* members-only templates (e.g. December Promo): tick Members, untick the rest — you can still tick others */
+  const tick=t=>{ body.querySelectorAll('[data-g="n"] [data-ann],[data-g="b"] [data-ann]').forEach(x=>x.checked=!t.members); body.querySelectorAll('[data-g="m"] [data-ann]').forEach(x=>x.checked=true); count(); };
+  document.getElementById("an_tpl").onchange=e=>{ const t=ANN_TEMPLATES.find(x=>x.id===e.target.value)||ANN_DEFAULT; document.getElementById("an_subj").value=t.subject; document.getElementById("an_body").value=t.body; tick(t); prev(); };
+  tick(ANN_DEFAULT);
   document.getElementById("an_subj").oninput=prev; document.getElementById("an_body").oninput=prev;
   document.getElementById("an_copy").onclick=()=>copyText("📢 "+(val("an_subj")||ANN_DEFAULT.subject).toUpperCase()+"\n\n"+document.getElementById("an_body").value.trim()+"\n\nBook here: "+BOOK_URL, "Copied. Paste it in Viber or Facebook.");
   count(); prev();
