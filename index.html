@@ -1477,8 +1477,8 @@ const fwdCell = (lab,val,span) => `<td${span?` colspan="${span}"`:""}><div class
 function ackData(s){
   const c = sessionCalc(s), ins = instr(s.instructorId);
   const rows = (s.attendees||[]).map(a=>{ const m = member(a.memberId);
-    return { name:(m&&m.name)||a.name||"Student", kind: a.pkg ? "Package" : a.kind==="nonmember" ? "Non-member" : "Member", amount:+a.amount||0 }; });
-  const coachPct = c.gross>0 ? Math.round(c.inst/c.gross*1000)/10 : (c.mode==="pct" ? c.pct : 0);
+    return { name:(m&&m.name)||a.name||"Student", kind: a.freeGuestOf ? "Free guest" : a.pkg ? "Package" : a.kind==="nonmember" ? "Non-member" : "Member", amount:a.freeGuestOf?0:(+a.amount||0) }; });
+  const coachPct = c.mode==="pct" && !c.usedMin ? c.pct : (c.gross+c.fg)>0 ? Math.round(c.inst/(c.gross+c.fg)*1000)/10 : 0;
   return { docKind:"ackr", name: ins ? ins.name : "Coach", date:s.date, time:s.time, cls:typeName(s), rows, c,
     basis: c.absent ? "Coach absent — no pay" : c.mode==="pct" ? `${c.pct}% coach / ${100-c.pct}% studio${c.usedMin?" (minimum per class applied)":""}` : `Fixed rate: ${c.note}`,
     coachPct, studioPct: Math.round((100-coachPct)*10)/10,
@@ -1498,6 +1498,7 @@ function ackPages(d){
       <tbody>${body}</tbody></table>
     <table class="fwa-sum">
       <tr><td>Total class sales (${d.rows.length} checked in)</td><td class="r">${peso(c.gross)}</td></tr>
+      ${c.fg?`<tr><td>Free guest credit (${c.fgN}) · not collected, studio pays coach share</td><td class="r">${peso(c.fg)}</td></tr>`:""}
       <tr class="coach"><td>Coach share · ${d.coachPct}%</td><td class="r">${peso(c.inst)}</td></tr>
       <tr class="studio"><td>Studio share · ${d.studioPct}%</td><td class="r">${peso(c.biz)}</td></tr></table>
     <div class="fwa-ack">I, <b>${esc(d.name)}</b>, acknowledge that I received <b>${peso(c.inst)}</b> as my coach fee for the class above. I have seen the list of checked-in students and the percentage split used to compute my fee.</div>
@@ -2083,7 +2084,9 @@ function instRate(s){
 }
 const paysFor = s => s.instStatus!=="absent" && (s.attendees||[]).length>0;
 function sessionCalc(s){
-  const gross = (s.attendees||[]).reduce((a,x)=>a+(+x.amount||0),0);
+  /* free guests pay nothing: their credit is NOT cash sales, but % coaches still earn their share of it (the studio pays it) */
+  const fgList = (s.attendees||[]).filter(x=>x.freeGuestOf), fg = fgList.reduce((a,x)=>a+(+x.amount||0),0), fgN = fgList.length;
+  const gross = (s.attendees||[]).reduce((a,x)=>a+(+x.amount||0),0) - fg;
   const {pct,min,mode,rate} = instRate(s);
   const absent = s.instStatus==="absent";
   const pays = paysFor(s);
@@ -2094,7 +2097,7 @@ function sessionCalc(s){
     const n = pays ? 1 + S.sessions.filter(x=>x.id!==s.id && x.instructorId===s.instructorId && x.date===s.date && paysFor(x)).length : 0;
     dayShare = n; inst = pays ? rate/n : 0;
   } else {
-    const byPct = gross*pct/100;
+    const byPct = (gross+fg)*pct/100;
     inst = pays ? Math.max(byPct, min) : 0;
     usedMin = pays && inst>byPct && inst>0;
   }
@@ -2104,7 +2107,8 @@ function sessionCalc(s){
   inst += unliPay;
   const effPct = mode==="pct" ? pct : (gross>0 ? Math.round(inst/gross*100) : 0);
   const note = (mode==="class" ? `fixed ${peso(rate)}/class` : mode==="day" ? `fixed ${peso(rate)}/day${dayShare>1?` ÷ ${dayShare} classes`:""}` : "") + (unliPay ? `${mode==="pct"?"":" · "}+ ${peso(unliPay)} Unli (${unliN} × ${peso(+S.settings.unliCoachPay||0)})` : "");
-  return { gross, pct:effPct, inst, biz: gross-inst, usedMin, absent, mode, note, unliN, unliPay };
+  const fgPay = mode==="pct" && pays ? Math.round(fg*pct)/100 : 0;
+  return { gross, pct:effPct, inst, biz: gross-inst, usedMin, absent, mode, note, unliN, unliPay, fg, fgN, fgPay };
 }
 function expectedCalc(s){
   const done = new Set((s.attendees||[]).map(a=>a.memberId));
@@ -2114,7 +2118,7 @@ function expectedCalc(s){
     const kind = m ? (m.type==="member"?"member":"nonmember") : (b.is_member?"member":"nonmember");
     const pr = !bkFreeGuest(b) && !(isSet(b.amount) && +b.amount===0) && m ? priceFor(m, s, kind) : null;
     const amt = bkFreeGuest(b) ? fgCredit(s) : isSet(b.amount) && +b.amount===0 ? 0 : (pr ? pr.amount : rate(kind==="member"?"member":"nonMember", s.typeId));
-    return Object.assign({memberId:b.member_id||("bk_"+b.id), kind, amount:Math.round((+amt||0)*100)/100}, pr&&pr.unli?{unli:true}:{});
+    return Object.assign({memberId:b.member_id||("bk_"+b.id), kind, amount:Math.round((+amt||0)*100)/100}, pr&&pr.unli?{unli:true}:{}, bkFreeGuest(b)?{freeGuestOf:b.guest_of}:{});
   });
   const c = sessionCalc(Object.assign({}, s, {attendees:(s.attendees||[]).concat(extra)}));
   c.pending = extra.length; return c;
@@ -2124,7 +2128,7 @@ const rentalAmt = r => isSet(r.amount) ? +r.amount : rentalAuto(r);
 const itemStock = id => S.expenses.filter(e=>e.itemId===id).reduce((a,e)=>a+(+e.qty||0),0) - S.sales.filter(x=>x.itemId===id).reduce((a,x)=>a+(+x.qty||0),0);
 function memberStats(m){
   const visits = S.sessions.filter(s=>(s.attendees||[]).some(x=>x.memberId===m.id)).sort((a,b)=>b.date.localeCompare(a.date));
-  const spent = S.sessions.reduce((a,s)=>a+(s.attendees||[]).filter(x=>x.memberId===m.id).reduce((b,x)=>b+(+x.amount||0),0),0);
+  const spent = S.sessions.reduce((a,s)=>a+(s.attendees||[]).filter(x=>x.memberId===m.id && !x.freeGuestOf).reduce((b,x)=>b+(+x.amount||0),0),0);
   const last = visits[0]?.date || "";
   const p = plan(m.planId);
   const used = pkgUsed(m), total = p ? +p.sessions||0 : 0;
@@ -2150,7 +2154,7 @@ function totals(r){
   let gross=0, inst=0, biz=0, heads=0, memHeads=0, nonHeads=0, nonSales=0, memSales=0, unpaid=0; const byType={};
   ses.forEach(s=>{ const c=sessionCalc(s); gross+=c.gross; inst+=c.inst; biz+=c.biz; if(!s.paidOut) unpaid+=c.inst;
     const k=typeName(s); const o=byType[k]||(byType[k]={n:0,heads:0,gross:0,biz:0}); o.n++; o.heads+=(s.attendees||[]).length; o.gross+=c.gross; o.biz+=c.biz;
-    (s.attendees||[]).forEach(a=>{ heads++; if(a.kind==="nonmember"){nonHeads++; nonSales+=+a.amount||0;} else {memHeads++; memSales+=+a.amount||0;} }); });
+    (s.attendees||[]).forEach(a=>{ heads++; const amt=a.freeGuestOf?0:(+a.amount||0); if(a.kind==="nonmember"){nonHeads++; nonSales+=amt;} else {memHeads++; memSales+=amt;} }); });
   const exps = S.expenses.filter(e=>inR(e.date,r));
   const exp = exps.reduce((a,e)=>a+(+e.amount||0),0);
   const expMerch = exps.filter(e=>e.itemId).reduce((a,e)=>a+(+e.amount||0),0);
@@ -2185,7 +2189,7 @@ function splitBar(inst, biz, pct, c){
     <div class="inst" style="width:${w}%">${iL}</div>
     <div class="biz">${bL}</div></div>
     <div class="legend"><span>Instructor ${peso(inst)}${fixed?` (${esc(c.note)})`:""}</span><span${biz<0?' style="color:var(--bad)"':""}>Studio ${peso(biz)}</span></div>
-    ${c?`<p class="small muted" style="margin:4px 0 0">Sales ${peso(gross)} − Instructor ${peso(inst)}${fixed?" fixed":` (${Math.round(+pct)}%)`} = <b${biz<0?' style="color:var(--bad)"':""}>Studio ${peso(biz)}</b>${biz<0?" · loss: sales are below the instructor's fixed rate":""}</p>`:""}</div>`;
+    ${c?`<p class="small muted" style="margin:4px 0 0">Sales ${peso(gross)} − Instructor ${peso(inst)}${fixed?" fixed":` (${Math.round(+pct)}%${c.fg?` of ${peso(gross+c.fg)} incl. free guest`:""})`} = <b${biz<0?' style="color:var(--bad)"':""}>Studio ${peso(biz)}</b>${biz<0?" · loss: sales are below the instructor's fixed rate":""}</p>`:""}${c&&c.fg?`<p class="small" style="margin:4px 0 0;color:var(--lime)">🎟 ${c.fgN} free guest · ${peso(c.fg)} not collected (not in sales)${c.fgPay?` · coach still gets ${peso(c.fgPay)}, paid by the studio`:""}</p>`:""}</div>`;
 }
 const promoStrip = () => { const on=promoOn(); const p=S.settings.promo;
   return `<div class="promo ${on?"":"off"}"><div><b>${on?"Promo rates are ON":"Regular rates"}</b><div class="small muted">${on?(p.ends?`Until ${fmtDate(p.ends)}`:"No end date set"):(p.active&&p.ends?`Promo ended ${fmtDate(p.ends)}`:"Turn on to use promo prices")}</div></div>
