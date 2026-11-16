@@ -975,7 +975,7 @@ function bookingsCard(){
      <button type="button" class="btn sm ghost" data-act="bkMove" data-id="${b.id}">Reschedule</button><button type="button" class="btn sm danger" data-act="bkCancel" data-id="${b.id}">Cancel booking</button>`)}</div></li>`;
   return `<div class="card"><div class="row between"><h3 style="margin:0">Online bookings</h3><div class="row"><button type="button" class="btn sm ghost" data-act="bkCopy">Copy booking link</button><button type="button" class="btn sm ghost" data-act="bkRefresh" aria-label="Refresh bookings">↻</button></div></div>
    <p class="small muted" style="margin:6px 0 10px">Members book anytime with their Member ID. Guests (non-members) can book from 24 hours before class. Confirm each booking after you check the payment. Confirming a guest saves them as a non-member. Online booking closes 1 hour before class. Unpaid bookings with no uploaded proof are auto-cancelled 4 hours after booking, or 1 hour before class if still unpaid.</p>
-   ${pend.length?`<h3 style="margin:10px 0 6px">To confirm (${pend.length})</h3><ul class="list">${pend.map(row).join("")}</ul>`:`<p class="small muted" style="margin:6px 0">No bookings waiting for payment.</p>`}
+   ${pend.length?`<div class="row" style="justify-content:space-between;align-items:center;margin:10px 0 6px"><h3 style="margin:0">To confirm (${pend.length})</h3>${pend.some(bkPast)?`<button type="button" class="btn sm ghost" data-act="bkClearPast">🧹 Clear past (${pend.filter(bkPast).length})</button>`:""}</div><ul class="list">${pend.map(row).join("")}</ul>`:`<p class="small muted" style="margin:6px 0">No bookings waiting for payment.</p>`}
    ${conf.length?`<details style="margin-top:10px"><summary class="small"><b>Confirmed (${conf.length})</b></summary><ul class="list">${conf.map(row).join("")}</ul></details>`:""}</div>`;
 }
 /* find an existing MEMBER record for a person: same mobile, else same email, else same name (middle initial ignored) */
@@ -1013,6 +1013,16 @@ async function bkSet(id, patch, msg){
     msg = res==="sent" ? "Confirmed · email sent to "+bkEmailOf(bk) : res==="noemail" ? "Confirmed · no email on file. Tap “Copy message” to send on Messenger." : res==="nomail" ? "Confirmed · email not set up. Tap “Copy message”." : res==="queued" ? "Confirmed · email limit reached. Email queued — it sends automatically once the limit frees up." : "Confirmed · email failed. Tap “Copy message”.";
   }
   toast(msg); await loadBookings(); render();
+}
+/* ---------- clear unconfirmed bookings whose class date has passed (no emails sent) ---------- */
+async function bkClearPast(){
+  const old = BK.filter(b=>b.status==="pending" && bkPast(b));
+  if(!old.length){ toast("Nothing to clear."); return; }
+  const withProof = old.filter(b=>b.proof_path).length;
+  if(!confirm(`Clear ${old.length} unconfirmed booking${old.length>1?"s":""} whose class date has passed?${withProof?`\n\n⚠ ${withProof} of them uploaded a payment screenshot. If they attended, confirm them in the class instead.`:""}\n\nNo email is sent. They are removed from “To confirm”.`)) return;
+  const r = await sb.from("fw_bookings").update({status:"cancelled", cancelled_by:"cleared (class passed, not confirmed)", updated_at:new Date().toISOString()}).in("id", old.map(b=>b.id)).eq("status","pending");
+  if(r.error){ toast("Couldn't clear. Check your internet."); return; }
+  toast(`Cleared ${old.length} past booking${old.length>1?"s":""}`); await loadBookings(); render();
 }
 /* ---------- move / rebook a booking to another class ---------- */
 const sesStartISO = s => new Date(`${s.date}T${(s.time||"00:00").slice(0,5)}:00+08:00`).toISOString();
@@ -3874,6 +3884,7 @@ function handleAct(b){
   else if(a==="bkResend"){ const b=BK.find(x=>x.id===id); if(b) bkSendConf(b).then(r=>toast(r==="sent"?"Email sent":r==="queued"?"Email limit reached. Queued — sends automatically later.":r==="noemail"?"No email on file. Use Copy message.":"Email failed. Use Copy message.")); }
   else if(a==="bkConfirm") bkSet(id,{status:"confirmed"},"Booking confirmed");
   else if(a==="bkUnconfirm") bkSet(id,{status:"pending"},"Back to waiting for payment");
+  else if(a==="bkClearPast"){ bkClearPast(); }
   else if(a==="bkCancel"){ const bk=BK.find(x=>x.id===id); if(confirm(`Cancel ${bk?bk.name+"'s":"this"} booking${bk?" for "+(bk.class_name||"class")+" · "+bkWhen(bk):""}? The slot opens up for others.`)) bkSet(id,{status:"cancelled",cancelled_by:"studio"},"Booking cancelled"); }
   else if(a==="bkMove") bkMoveDlg(id);
   else if(a==="cxMove") cxMoveDlg(id);
