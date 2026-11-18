@@ -190,6 +190,7 @@ const BEFORE = (member) => `<div class="rules" style="border-color:var(--lime)">
   </ul>
   <div style="font-weight:700;margin:10px 0 6px">🎒 Please bring</div>
   <ul style="margin:0;padding-left:18px"><li>Water bottle</li><li>Small towel</li><li>Extra shirt</li><li>Comfortable rubber shoes</li></ul></div>`;
+const AUTO_CANCEL = `<div class="rules" style="border-color:var(--bad);color:var(--ink)">⏰ <b>Reminder:</b> No proof of payment uploaded within <b>4 hours</b> = your slot is <b>cancelled automatically</b> and given to others. (If class is near, it cancels at the booking cutoff, 1 hour before class.)</div>`;
 const PAY_REMIND = `<p class="small" style="margin:8px 0;color:var(--warn);font-weight:700">Reminder: Paid slots are non-refundable and non-transferable. No show = forfeited.</p>`;
 const ERR = {
   paid_no_cancel: "Paid bookings can't be cancelled. Payment is non-refundable and the slot is non-transferable.",
@@ -271,7 +272,7 @@ function render(){
     const ft = fmtTime(s.time);
     return `<div class="card" style="margin-bottom:10px">
       <div class="row"><div><div class="cn">${esc(s.class)}</div><div class="co">${esc(dayLabel(s.date))} · ${ft.t} ${ft.ap}${s.coach?` · ${esc(s.coach)}`:""}</div></div>${st}</div>
-      <p class="small muted" style="margin-top:8px">Booking ref: <b style="color:var(--ink)">${esc(s.booking_ref||"")}</b>${s.mine==="pending"?(s.proof_sent?" · Proof sent, waiting for confirmation":" · Please pay to confirm your slot"):""}</p>
+      <p class="small muted" style="margin-top:8px">Booking ref: <b style="color:var(--ink)">${esc(s.booking_ref||"")}</b>${s.mine==="pending"?(s.proof_sent?" · Proof sent, waiting for confirmation":" · Upload proof within 4 hours or this slot is cancelled automatically"):""}</p>
       <div class="row" style="justify-content:flex-start;margin-top:10px">
         ${s.mine==="pending"?`<button class="btn sm" data-proof="${esc(s.id)}">${s.proof_sent?"Send another proof":"Upload proof of payment"}</button>`:""}
         ${!s.free && (s.mine==="confirmed" || s.proof_sent) ? `<span class="small muted">Paid · non-refundable, no cancellation</span>` : s.open?`<button class="btn ghost sm" data-cancel="${esc(s.id)}">Cancel booking</button>`:`<span class="small muted">Can't cancel online (less than ${data.cutoffHours} hour${data.cutoffHours==1?'':'s'} to class)</span>`}
@@ -378,7 +379,7 @@ function bookSheet(s){
     <label for="bkRef">GCash / Maya reference no. (optional)</label>
     <input type="text" id="bkRef" maxlength="60" placeholder="e.g. 1234 567 890123" inputmode="numeric">
     <label>Screenshot of your payment</label>
-    <label class="file"><input type="file" id="bkFile" accept="image/*,application/pdf"><span>📎</span><span id="bkFileName">Tap to choose a photo</span></label>`}
+    <label class="file"><input type="file" id="bkFile" accept="image/*,application/pdf"><span>📎</span><span id="bkFileName">Tap to choose a photo</span></label>${AUTO_CANCEL}`}
     <div class="err" id="bkErr" hidden></div>
     <button class="btn pink block" id="bkGo">${s.free?"Confirm booking":"Send proof &amp; reserve my slot"}</button>
     <button class="btn ghost block" style="margin-top:10px" data-close>Not now</button>`);
@@ -419,7 +420,7 @@ function paySheet(s, ref, fresh){
   openSheet(`<h3>${fresh?"Slot reserved! 🎉":"Pay to confirm"}</h3>
     <p class="muted">${esc(s.class)} · ${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}</p>
     <p class="small muted" style="margin-top:12px">Booking ref</p><div class="ref">${esc(ref||s.booking_ref||"")}</div>
-    <div class="rules">${esc(data.payNote)}</div>${PAY_REMIND}${BEFORE(true)}
+    <div class="rules">${esc(data.payNote)}</div>${AUTO_CANCEL}${PAY_REMIND}${BEFORE(true)}
     <label for="pRef">GCash / Maya reference no. (optional)</label>
     <input type="text" id="pRef" maxlength="60" placeholder="e.g. 1234 567 890123" inputmode="numeric">
     <label>Screenshot of your payment</label>
@@ -537,7 +538,7 @@ function renderGuest(){
   $("gOpenTxt").textContent = G.guestOpenHours>=168 ? "Guest booking is open now." : "Members get first pick, so guest booking opens "+G.guestOpenHours+" hours before each class."; $("gCutH").textContent = G.cutoffHours+(G.cutoffHours==1?" hour":" hours");
   const mine = gGet().filter(b=>new Date(b.when) > new Date(Date.now()-3*3600e3));
   gSet(mine);
-  $("gMine").innerHTML = (mine.length ? `<h2>Your guest bookings</h2>`+mine.map(b=>`<div class="card" style="margin-bottom:10px"><div class="row"><div><div class="cn">${esc(b.cls)}</div><div class="co">${esc(fmtWhen(b.when))} · Ref ${esc(b.ref)}${b.free||b.confirmed?" · Confirmed ✓":b.proofSent?" · Proof sent ✓":" · Waiting for payment"}</div></div><button class="btn sm" data-gshow="${esc(b.ref)}">${b.free||b.proofSent||b.confirmed?"Show booking":"Pay / upload proof"}</button></div></div>`).join("") : "")
+  $("gMine").innerHTML = (mine.length ? `<h2>Your guest bookings</h2>`+mine.map(b=>`<div class="card" style="margin-bottom:10px"><div class="row"><div><div class="cn">${esc(b.cls)}</div><div class="co">${esc(fmtWhen(b.when))} · Ref ${esc(b.ref)}${b.free||b.confirmed?" · Confirmed ✓":b.proofSent?" · Proof sent ✓":" · Waiting for payment · Upload proof within 4 hrs or it auto-cancels"}</div></div><button class="btn sm" data-gshow="${esc(b.ref)}">${b.free||b.proofSent||b.confirmed?"Show booking":"Pay / upload proof"}</button></div></div>`).join("") : "")
     + `<button class="btn ghost block" style="margin:0 0 10px" data-gupload="1">📎 Already booked? Upload proof of payment</button><button class="btn ghost block" style="margin:0 0 14px" data-gstatus="1">🔎 Check my booking status</button>`;
   const types = [...new Set(G.sessions.map(s=>s.class))];
   if(gType && !types.includes(gType)) gType="";
@@ -639,7 +640,7 @@ function gPaySheet(s, d){
     <label>Screenshot of your payment</label>
     <label class="file"><input type="file" id="gpFile" accept="image/*,application/pdf"><span>📎</span><span id="gpFileName">Tap to choose a photo</span></label>
     <div class="err" id="gpErr" hidden></div>
-    ${PAY_REMIND}
+    ${AUTO_CANCEL}${PAY_REMIND}
     <button class="btn pink block" id="gpGo" type="button">Send proof &amp; reserve my slot</button>
     <button class="btn ghost block" style="margin-top:10px" data-close>Cancel</button>`);
   $("gCopy").onclick = ()=>{ try{ navigator.clipboard.writeText(G.payNumber.replace(/\D/g,"")).then(()=>toast("Number copied")); }catch(e){ toast(G.payNumber); } };
@@ -698,7 +699,7 @@ function gProofWire(b, getRef){
 }
 function gUploadSheet(){
   openSheet(`<h3>Upload proof of payment</h3>
-    <p class="small muted">For guests who already booked. Use your booking ref and the mobile number you booked with.</p>
+    <p class="small muted">For guests who already booked. Use your booking ref and the mobile number you booked with.</p>${AUTO_CANCEL}
     <label for="guRef">Booking ref</label><input type="text" id="guRef" maxlength="20" placeholder="BK-XXXXXX" autocapitalize="characters">
     ${gProofForm({mob:""})}
     <button class="btn ghost block" style="margin-top:10px" data-close>Close</button>`);
@@ -745,7 +746,7 @@ function gDone(b, fresh){
     ${b.confirmed&&!b.free?`<ul class="rules"><li><b>Your payment is verified and your slot is confirmed.</b></li><li>Show this screenshot at the studio counter.</li></ul>${BEFORE(false)}<button class="btn block" style="margin-top:16px" data-close>Done</button>`:b.free?`<ul class="rules"><li>This class is free. <b>No payment needed.</b></li><li>Show this screenshot at the studio counter.</li></ul>${BEFORE(false)}
     ${upsell()}
     <button class="btn block" style="margin-top:16px" data-close>Done</button>`:`
-    ${b.proofSent?"":`<div class="rules" style="border-color:var(--warn)">⚠️ <b>Not reserved yet.</b> Your slot is only held after you upload your proof of payment.</div>
+    ${b.proofSent?"":`${AUTO_CANCEL}
     <div class="rules" style="border-color:var(--pink)">
       <div style="font-weight:700;margin-bottom:6px">Pay via GCash or Maya</div>
       <div style="font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-weight:900;font-style:italic;font-size:30px;color:var(--lime);line-height:1">${esc(G.payNumber)}</div>
