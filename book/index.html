@@ -368,24 +368,38 @@ function bookSheet(s){
   openSheet(`<h3>Book this class?</h3>
     <div class="kv"><b>Class</b><span>${esc(s.class)}</span><b>When</b><span>${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}</span>${s.coach?`<b>Coach</b><span>${esc(s.coach)}</span>`:""}<b>Slots</b><span>${Math.max(0,s.capacity-s.taken)} of ${s.capacity} left</span></div>
     <ul class="rules">
-      ${s.free?`<li>This class is <b>FREE</b>. No payment needed. Your slot is <b>confirmed right away</b>.</li>`:`<li>Your slot is <b>reserved</b> now and <b>confirmed once you pay</b>.</li>`}
+      ${s.free?`<li>This class is <b>FREE</b>. No payment needed. Your slot is <b>confirmed right away</b>.</li>`:`<li><b>Pay first.</b> Your slot is only reserved after you upload your proof of payment. First to pay, first to reserve.</li>`}
       <li>Booking closes <b>${data.cutoffHours} hour${data.cutoffHours==1?'':'s'}</b> before class.</li>
       <li>Bring your membership card. Show it at the counter for your points and discount.</li>
     </ul>
     <div class="rules" style="border-color:var(--pink)">📧 <b>All booking confirmations are sent to your email.</b><br>${data.member.emailMasked?`We'll send it to <b>${esc(data.member.emailMasked)}</b>. This is the email you gave us, so please double-check it. Wrong email? Message our Facebook page before you pay.`:`We don't have your email yet. Message our Facebook page so we can add it.`}</div>
     ${MINPAX(s)}${s.free?"":POLICY+`<label class="check" style="margin-top:0;color:var(--ink)"><input type="checkbox" id="bkAgree"> I understand: no cancellation, no refund, not transferable. No show = forfeited. Classes under ${minPax(s)} students may be moved or merged.</label>`}
+    ${s.free?"":`<div class="rules" style="border-color:var(--pink)"><div style="font-weight:700;margin-bottom:4px">Pay via GCash or Maya</div>${esc(data.payNote)}</div>
+    <label for="bkRef">GCash / Maya reference no. (optional)</label>
+    <input type="text" id="bkRef" maxlength="60" placeholder="e.g. 1234 567 890123" inputmode="numeric">
+    <label>Screenshot of your payment</label>
+    <label class="file"><input type="file" id="bkFile" accept="image/*,application/pdf"><span>📎</span><span id="bkFileName">Tap to choose a photo</span></label>`}
     <div class="err" id="bkErr" hidden></div>
-    <button class="btn pink block" id="bkGo">Confirm booking</button>
+    <button class="btn pink block" id="bkGo">${s.free?"Confirm booking":"Send proof &amp; reserve my slot"}</button>
     <button class="btn ghost block" style="margin-top:10px" data-close>Not now</button>`);
+  const goTxt = s.free?"Confirm booking":"Send proof & reserve my slot";
+  if($("bkFile")) $("bkFile").onchange = e=>{ const f=e.target.files[0]; $("bkFileName").textContent = f ? f.name : "Tap to choose a photo"; };
   $("bkGo").onclick = async ()=>{
-    if(!s.free && !$("bkAgree").checked){ $("bkErr").textContent="Please tick the box to agree to the no-refund policy."; $("bkErr").hidden=false; return; }
+    const bErr = t => { $("bkErr").textContent=t; $("bkErr").hidden=false; $("bkGo").disabled=false; $("bkGo").textContent=goTxt; };
+    if(!s.free && !$("bkAgree").checked) return bErr("Please tick the box to agree to the no-refund policy.");
+    const f = !s.free && $("bkFile").files[0], refNo = !s.free ? $("bkRef").value.trim() : "";
+    if(!s.free && !f) return bErr("Please pay first, then choose your payment screenshot.");
     $("bkGo").disabled = true; $("bkGo").innerHTML = `<span class="spin"></span>`;
+    let path = null;
+    if(f){ path = await upload(f); if(!path) return bErr("Upload failed. Try a smaller photo, or send it to our Facebook page."); }
     const r = await rpc("fw_member_book", {p_no:cred.no, p_mobile:cred.mob, p_session:s.id});
-    if(!r.ok){ $("bkErr").textContent = ERR[r.error]||ERR.network; $("bkErr").hidden=false; $("bkGo").disabled=false; $("bkGo").textContent="Confirm booking"; if(["full","closed","already","no_session"].includes(r.error)) load(true); return; }
+    if(!r.ok){ if(["full","closed","already","no_session"].includes(r.error)) load(true); return bErr((ERR[r.error]||ERR.network)+(path&&["full","closed"].includes(r.error)?" If you already paid, message our Facebook page for a refund or another class.":"")); }
     await load(true);
     const ns = data.sessions.find(x=>x.id===s.id) || s;
     if(r.free || s.free){ freeSheet(ns, r.ref); return; }
-    paySheet(ns, r.ref, true);
+    const p = await rpc("fw_member_proof", {p_no:cred.no, p_mobile:cred.mob, p_booking:ns.booking_id, p_pay_ref:refNo||null, p_proof_path:path});
+    if(!p.ok){ toast("Your screenshot didn't send. Please upload it again."); paySheet(ns, r.ref, false); return; }
+    closeSheet(); toast("Slot reserved! We'll confirm once we check your payment."); load(true);
   };
 }
 function freeSheet(s, ref){
@@ -589,13 +603,64 @@ function gBookSheet(s){
     if(em.toLowerCase()!==$("gEmail2").value.trim().toLowerCase()) return err("Your 2 emails don't match. Please double-check your email.");
     if(!confirm("Is this your correct email?\n\n"+em+"\n\nYour booking confirmation will be sent here.")) return;
     if(!$("gAgree").checked) return err(GERR.not_agreed);
+    const d = {name, mob, fb, em};
+    if(!s.free){ gPaySheet(s, d); return; }
     $("gGo").disabled=true; $("gGo").innerHTML=`<span class="spin"></span>`;
     const r = await rpc("fw_guest_book", {p_session:s.id, p_name:name, p_mobile:mob, p_email:em, p_fb:fb, p_agreed:true});
     if(!r.ok){ err(GERR[r.error]||ERR.network); $("gGo").disabled=false; $("gGo").textContent="Reserve my slot"; if(["full","closed","already","no_session","members_only"].includes(r.error)) loadGuest(true); return; }
     const when = s.date+"T"+s.time+":00+08:00";
-    const b = {ref:r.ref, cls:s.class, when, coach:s.coach, name, email:em, mob, free:!!(r.free||s.free)};
+    const b = {ref:r.ref, cls:s.class, when, coach:s.coach, name, email:em, mob, free:true};
     gSet([...gGet().filter(x=>x.ref!==b.ref), b]);
     loadGuest(true); gDone(b, true);
+  };
+  if(!s.free) $("gGo").textContent = "Next: Pay for my slot";
+}
+/* Paid guest classes: pay + upload proof FIRST. The slot is only reserved after the proof is sent. */
+function gPaySheet(s, d){
+  const ft = fmtTime(s.time);
+  openSheet(`<p class="small" style="margin:0 0 4px;color:var(--warn);font-weight:700">STEP 2 OF 2 · NOT RESERVED YET</p>
+    <h3>Pay to reserve your slot</h3>
+    <p class="muted">${esc(s.class)} · ${esc(dayLabel(s.date))}, ${ft.t} ${ft.ap}${s.coach?` · ${esc(s.coach)}`:""}</p>
+    <div class="rules" style="border-color:var(--warn)">⚠️ <b>Your slot is NOT reserved yet.</b> First to pay, first to reserve. Pay first, then upload your screenshot below to get your slot.</div>
+    <div class="rules" style="border-color:var(--pink)">
+      <div style="font-weight:700;margin-bottom:6px">Pay via GCash or Maya</div>
+      <div style="font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-weight:900;font-style:italic;font-size:30px;color:var(--lime);line-height:1">${esc(G.payNumber)}</div>
+      <div>Account name: <b>${esc(G.payName)}</b></div>
+      <button class="btn ghost sm" id="gCopy" type="button" style="margin-top:8px">Copy number</button>
+      <p class="small muted" style="margin-top:8px">${esc(G.rateNote)}</p>
+    </div>
+    <ol class="small" style="padding-left:18px;line-height:1.6;margin:10px 0">
+      <li>Pay your class fee to the number above.</li>
+      <li>Upload your payment screenshot below.</li>
+      <li>Tap <b>Send proof &amp; reserve my slot</b>.</li>
+    </ol>
+    <label for="gpRef">GCash / Maya reference no. (optional)</label>
+    <input type="text" id="gpRef" maxlength="60" placeholder="e.g. 1234 567 890123" inputmode="numeric">
+    <label>Screenshot of your payment</label>
+    <label class="file"><input type="file" id="gpFile" accept="image/*,application/pdf"><span>📎</span><span id="gpFileName">Tap to choose a photo</span></label>
+    <div class="err" id="gpErr" hidden></div>
+    ${PAY_REMIND}
+    <button class="btn pink block" id="gpGo" type="button">Send proof &amp; reserve my slot</button>
+    <button class="btn ghost block" style="margin-top:10px" data-close>Cancel</button>`);
+  $("gCopy").onclick = ()=>{ try{ navigator.clipboard.writeText(G.payNumber.replace(/\D/g,"")).then(()=>toast("Number copied")); }catch(e){ toast(G.payNumber); } };
+  $("gpFile").onchange = e=>{ const f=e.target.files[0]; $("gpFileName").textContent = f ? f.name : "Tap to choose a photo"; };
+  $("gpGo").onclick = async ()=>{
+    const err = m => { $("gpErr").textContent=m; $("gpErr").hidden=false; $("gpGo").disabled=false; $("gpGo").textContent="Send proof & reserve my slot"; };
+    const f = $("gpFile").files[0], refNo = $("gpRef").value.trim();
+    if(!f) return err("Please pay first, then choose your payment screenshot.");
+    $("gpGo").disabled = true; $("gpGo").innerHTML = `<span class="spin"></span>`;
+    const path = await upload(f, G && G.owner);
+    if(!path) return err("Upload failed. Try a smaller photo, or send it to our Facebook page.");
+    const r = await rpc("fw_guest_book", {p_session:s.id, p_name:d.name, p_mobile:d.mob, p_email:d.em, p_fb:d.fb, p_agreed:true});
+    if(!r.ok){ loadGuest(true); return err((GERR[r.error]||ERR.network)+(["full","closed"].includes(r.error)?" If you already paid, message our Facebook page for a refund or another class.":"")); }
+    const when = s.date+"T"+s.time+":00+08:00";
+    const b = {ref:r.ref, cls:s.class, when, coach:s.coach, name:d.name, email:d.em, mob:d.mob, free:false};
+    const p = await rpc("fw_guest_proof", {p_ref:r.ref, p_mobile:d.mob, p_pay_ref:refNo||null, p_proof_path:path});
+    b.proofSent = !!p.ok;
+    gSet([...gGet().filter(x=>x.ref!==b.ref), b]);
+    loadGuest(true);
+    if(!p.ok){ toast("Your screenshot didn't send. Please upload it again."); gDone(b, false); return; }
+    gDone(b, true);
   };
 }
 function gProofForm(b){
@@ -675,11 +740,12 @@ async function gRefresh(b){
 }
 function gDone(b, fresh){
   openSheet(`<p class="small" style="margin:0 0 4px;color:var(--lime);font-weight:700">📸 SCREENSHOT THIS PAGE</p>
-    <h3>${fresh?"Slot reserved!":"Your booking"}</h3>
+    <h3>${fresh&&(b.proofSent||b.free)?"Slot reserved!":"Your booking"}</h3>
     <div class="kv"><b>Ref</b><span class="ref" style="font-size:28px">${esc(b.ref)}</span><b>Name</b><span>${esc(b.name)}</span><b>Class</b><span>${esc(b.cls)}</span><b>When</b><span>${esc(fmtWhen(b.when))}</span>${b.coach?`<b>Coach</b><span>${esc(b.coach)}</span>`:""}<b>Status</b><span>${b.free?`<span class="pill lime">Confirmed ✓ · FREE</span>`:b.confirmed?`<span class="pill lime">Confirmed ✓</span>`:b.proofSent?`<span class="pill warn">Checking payment</span>`:`<span class="pill warn">Waiting for payment</span>`}</span></div>
     ${b.confirmed&&!b.free?`<ul class="rules"><li><b>Your payment is verified and your slot is confirmed.</b></li><li>Show this screenshot at the studio counter.</li></ul>${BEFORE(false)}<button class="btn block" style="margin-top:16px" data-close>Done</button>`:b.free?`<ul class="rules"><li>This class is free. <b>No payment needed.</b></li><li>Show this screenshot at the studio counter.</li></ul>${BEFORE(false)}
     ${upsell()}
     <button class="btn block" style="margin-top:16px" data-close>Done</button>`:`
+    ${b.proofSent?"":`<div class="rules" style="border-color:var(--warn)">⚠️ <b>Not reserved yet.</b> Your slot is only held after you upload your proof of payment.</div>
     <div class="rules" style="border-color:var(--pink)">
       <div style="font-weight:700;margin-bottom:6px">Pay via GCash or Maya</div>
       <div style="font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-weight:900;font-style:italic;font-size:30px;color:var(--lime);line-height:1">${esc(G.payNumber)}</div>
@@ -691,7 +757,7 @@ function gDone(b, fresh){
       <li>Pay your class fee to the number above.</li>
       <li>Upload your payment screenshot below.</li>
       <li>We check it and confirm your slot.</li>
-    </ol>
+    </ol>`}
     ${gProofForm(b)}
     <p class="small muted">Your slot is confirmed once we verify your payment.${b.email?" We'll email your confirmation to <b>"+esc(b.email)+"</b> (the email you gave us). Check your Inbox, Promotions, Updates and Spam folders.":""} You can also tap <b>Check my booking status</b> on this page anytime.</p>${PAY_REMIND}${BEFORE(false)}
     ${upsell()}
