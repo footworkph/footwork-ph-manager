@@ -99,7 +99,7 @@ label.f input,label.f select,label.f textarea{display:block;width:100%;margin-to
 @media (min-width:900px){.wk{grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}}
 .wkday{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .wkday.today{border-color:var(--pink);box-shadow:0 0 0 1px var(--pink)}
-.wkh{display:flex;align-items:baseline;gap:8px}
+.wkh{display:flex;align-items:baseline;gap:4px 8px;flex-wrap:wrap}
 .wkh .dw{font-weight:800;font-style:italic;font-size:13px;letter-spacing:.5px;color:var(--ink)}
 .wkh .dw.we{color:var(--pink)}
 .wkh .dn{font-weight:800;font-size:13px;color:var(--muted)}
@@ -109,6 +109,9 @@ label.f input,label.f select,label.f textarea{display:block;width:100%;margin-to
 .wkc b{display:block;font-size:14px;line-height:1.25;overflow-wrap:anywhere}
 .wkc .sub{display:block;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .wkadd{width:100%;margin-top:auto;min-height:40px}
+.wkc.rent{border:1px dashed var(--pink);background:color-mix(in srgb,var(--pink) 10%,var(--soft))}
+.wkc.rent.req{border-style:dotted;opacity:.9}
+.wkrent{font-size:12px;font-weight:800;color:var(--pink);background:color-mix(in srgb,var(--pink) 14%,transparent);border-radius:99px;padding:2px 8px;white-space:nowrap}
 .wkbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .rcp{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
 .rcp:last-child{border-bottom:0}
@@ -2375,13 +2378,30 @@ const fmtStamp = iso => { const d=new Date(iso); return isNaN(d) ? "" : d.toLoca
 function vWeek(){
   const ws=curWeek(), list=weekSessions(ws), today=todayISO(), cap=+S.settings.capacity||9;
   const sent = S.settings.mail.sent[ws];
+  const we=addDays(ws,6);
+  const rentHrs = x => (+x.hours||0)+(+x.extHours||0);
+  const wkRents = S.rentals.filter(x=>x.date>=ws && x.date<=we && x.status!=="cancelled");
+  const wkReqs = RQ.filter(q=>q.rent_date>=ws && q.rent_date<=we && !wkRents.some(x=>x.rqId===q.id));
+  const wkRentHrs = wkRents.reduce((a,x)=>a+rentHrs(x),0) + wkReqs.reduce((a,q)=>a+(+q.hours||0),0);
   const days = DOW.map((dw,i)=>{
     const d=addDays(ws,i), items=list.filter(s=>s.date===d);
+    const rents = wkRents.filter(x=>x.date===d), reqs = wkReqs.filter(q=>q.rent_date===d);
+    const dayHrs = rents.reduce((a,x)=>a+rentHrs(x),0) + reqs.reduce((a,q)=>a+(+q.hours||0),0);
+    const entries = [
+      ...items.map(s=>({t:s.time||"", k:"s", x:s})),
+      ...rents.map(x=>({t:x.time||"", k:"r", x})),
+      ...reqs.map(q=>({t:rqHH(q.start_hour), k:"q", x:q}))
+    ].sort((a,b)=>a.t.localeCompare(b.t));
     const full = new Date(d+"T00:00").toLocaleDateString("en-PH",{weekday:"long",month:"long",day:"numeric"});
-    return `<div class="wkday${d===today?" today":""}"><div class="wkh"><span class="dw${i===0||i===6?" we":""}">${dw}</span><span class="dn">${shortD(d)}</span></div>
-      ${items.map(s=>{ const ins=instr(s.instructorId), n=slotsTaken(s);
+    return `<div class="wkday${d===today?" today":""}"><div class="wkh"><span class="dw${i===0||i===6?" we":""}">${dw}</span><span class="dn">${shortD(d)}</span>${dayHrs?`<span class="wkrent">🏠 Rented ${dayHrs} hr${dayHrs===1?"":"s"}</span>`:""}</div>
+      ${entries.map(e=>{
+        if(e.k==="r"){ const x=e.x, h=rentHrs(x);
+          return `<button type="button" class="wkc rent" data-act="editRental" data-id="${x.id}"><span class="tm">${fmtTime(x.time)}–${fmtTime(addHours(x.time,h))}</span><b>🏠 Studio rental · ${h} hr${h===1?"":"s"}</b><span class="sub">${esc(x.renter||"")}${x.purpose?" · "+esc(x.purpose):""} · ${x.status==="paid"?"Paid":"Unpaid"}</span></button>`; }
+        if(e.k==="q"){ const q=e.x;
+          return `<button type="button" class="wkc rent req" data-go="rental"><span class="tm">${fmtTime(rqHH(q.start_hour))}–${fmtTime(rqHH(q.start_hour+q.hours))}</span><b>🏠 Rental request · ${q.hours} hrs</b><span class="sub">${esc(q.name)} · Online, waiting for you to confirm</span></button>`; }
+        const s=e.x, ins=instr(s.instructorId), n=slotsTaken(s);
         return `<button type="button" class="wkc" data-act="editSession" data-id="${s.id}"><span class="tm">${fmtTime(s.time)||"No time"}</span><b>${esc(typeName(s))}</b><span class="sub">${ins?esc(ins.name)+" · ":""}${n}/${capOf(s)} pax${sesFlag(s, n>=capOf(s)?" · FULLY BOOKED":"")}${pendTag(s)}</span></button>`; }).join("")}
-      ${items.length?"":`<p class="small muted" style="margin:0">No class</p>`}
+      ${entries.length?"":`<p class="small muted" style="margin:0">No class</p>`}
       <button type="button" class="btn sm ghost wkadd" data-act="calAdd" data-date="${d}" aria-label="Add class on ${esc(full)}">+ Add class</button></div>`;
   }).join("");
   return `<div class="card" style="padding:12px">
@@ -2393,7 +2413,7 @@ function vWeek(){
     <div class="row" style="margin-top:10px;justify-content:center"><input type="date" data-calpick value="${ws}" aria-label="Go to any day"><button type="button" class="btn sm ghost" data-act="calNav" data-v="0">This week</button></div>
   </div>
   <div class="wkbar"><button type="button" class="btn lime" data-act="sendSched">Email schedule to members</button><button type="button" class="btn sm ghost" data-act="copyViber">Copy for Viber</button><button type="button" class="btn sm" data-act="announce">📢 Announcement</button><button type="button" class="btn sm ghost" data-act="copyWeek">Copy last week</button></div>
-  <p class="small muted" style="margin:-4px 0 12px">${list.length} class${list.length===1?"":"es"} this week.${sent?` Emailed ${esc(fmtStamp(sent.at))} to ${sent.n} member${sent.n===1?"":"s"}.`:" Not emailed yet."}</p>
+  <p class="small muted" style="margin:-4px 0 12px">${list.length} class${list.length===1?"":"es"} this week.${wkRentHrs?` <b style="color:var(--pink)">🏠 Studio rented ${wkRentHrs} hr${wkRentHrs===1?"":"s"}</b> (${wkRents.length+wkReqs.length} booking${wkRents.length+wkReqs.length===1?"":"s"}${wkReqs.length?`, ${wkReqs.length} waiting to confirm`:""}).`:""}${sent?` Emailed ${esc(fmtStamp(sent.at))} to ${sent.n} member${sent.n===1?"":"s"}.`:" Not emailed yet."}</p>
   <div class="wk">${days}</div>`;
 }
 function copyLastWeek(){
