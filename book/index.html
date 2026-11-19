@@ -86,6 +86,19 @@ input:focus{outline:2px solid var(--lime);outline-offset:1px}
 @keyframes s{to{transform:rotate(360deg)}}
 .foot{text-align:center;color:var(--muted);font-size:13px;margin-top:30px;line-height:1.6}
 .foot a{color:var(--lime)}
+.hrs{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}
+.hr{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;padding:10px 8px;font:700 16px "Barlow Semi Condensed",Arial,sans-serif;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.hr small{font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px}
+.hr.free small{background:rgba(180,250,42,.14);color:var(--lime)}
+.hr.rented{opacity:.75;cursor:default;border-color:rgba(250,18,148,.5)} .hr.rented small{background:rgba(250,18,148,.18);color:#FF7CC0}
+.hr.class{opacity:.6;cursor:default} .hr.class small{background:var(--card2);color:var(--muted)}
+.hr.past{opacity:.35;cursor:default} .hr.past small{background:var(--card2);color:var(--muted)}
+.hr.sel{border-color:var(--lime);background:rgba(180,250,42,.16);box-shadow:0 0 14px rgba(180,250,42,.3)}
+.hr.sel small{background:var(--lime);color:#111}
+.stepper{display:flex;align-items:center;gap:12px;margin-top:8px}
+.stepper button{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:#0C0C12;color:var(--ink);font:800 24px Arial,sans-serif;cursor:pointer}
+.stepper b{font-size:22px;min-width:70px;text-align:center}
+.sumbar{position:sticky;bottom:0;margin:16px -16px 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:rgba(7,7,10,.96);border-top:1px solid var(--line)}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -114,6 +127,11 @@ input:focus{outline:2px solid var(--lime);outline-offset:1px}
       <p class="small muted">Book as a guest. Pick your class and reserve your slot now. Slots are first to pay, first to reserve.</p>
       <button class="btn block" id="guestBtn" type="button" style="margin-top:12px">Book as a guest</button>
     </div>
+    <div class="card" style="margin-top:16px;border-color:var(--pink)">
+      <div style="font-weight:700;font-size:20px">🏠 Rent the studio</div>
+      <p class="small muted">For group dance practice, crews and Christmas presentations. See open hours and reserve your time.</p>
+      <button class="btn pink block" id="rentBtn" type="button" style="margin-top:12px">Book studio rental</button>
+    </div>
   </section>
 
   <!-- GUEST -->
@@ -125,6 +143,24 @@ input:focus{outline:2px solid var(--lime);outline-offset:1px}
     <div class="chips" id="gChips" role="group" aria-label="Filter by class" style="margin-top:12px"></div>
     <div id="gList"></div>
     <div id="gUpsell"></div>
+  </section>
+
+  <!-- STUDIO RENTAL -->
+  <section id="rent" hidden>
+    <button class="btn ghost sm" id="rBack" type="button">‹ Back</button>
+    <h1 style="margin-top:14px">Rent the <span>studio</span></h1>
+    <div class="card neon" style="margin-top:10px">
+      <div class="row"><div style="font-weight:700;font-size:18px">Studio rental rates</div><span class="pill lime">Up to 10 pax</span></div>
+      <ul class="small" style="margin:8px 0 0;padding-left:18px;line-height:1.6" id="rRates"></ul>
+    </div>
+    <button class="btn ghost block" style="margin:12px 0 0" id="rStatusBtn" type="button">🔎 Check my rental booking</button>
+    <h2>1. Pick a day</h2>
+    <div class="chips" id="rDays" role="group" aria-label="Pick a day"></div>
+    <div id="rDaySum"></div>
+    <h2>2. Pick your start time</h2>
+    <p class="small muted" style="margin-top:-4px">Green = open. Pink = already rented. Gray = class schedule.</p>
+    <div class="hrs" id="rHours"></div>
+    <div id="rPick"></div>
   </section>
 
   <!-- APP -->
@@ -230,7 +266,7 @@ const dayLabel = d => dObj(d).toLocaleDateString("en-PH",{weekday:"long",month:"
 const todayISO = () => { const x=new Date(); x.setMinutes(x.getMinutes()-x.getTimezoneOffset()); return x.toISOString().slice(0,10); };
 const dayName = d => d===todayISO() ? "Today" : dObj(d).toLocaleDateString("en-PH",{weekday:"long"});
 
-function show(which){ $("loading").hidden = which!=="loading"; $("login").hidden = which!=="login"; $("app").hidden = which!=="app"; $("guest").hidden = which!=="guest"; $("outBtn").hidden = which!=="app"; }
+function show(which){ $("loading").hidden = which!=="loading"; $("login").hidden = which!=="login"; $("app").hidden = which!=="app"; $("guest").hidden = which!=="guest"; $("rent").hidden = which!=="rent"; $("outBtn").hidden = which!=="app"; }
 
 async function load(silent){
   if(!silent) show("loading");
@@ -774,14 +810,207 @@ document.addEventListener("click", e=>{
   if(b.dataset.gshow){ const x=gGet().find(y=>y.ref===b.dataset.gshow); if(x){ gDone(x,false); gRefresh(x).then(nb=>{ if(nb.confirmed!==!!x.confirmed && $("dlg").classList.contains("show")) gDone(nb,false); }); } return; }
   const s = G.sessions.find(x=>x.id===b.dataset.gbook); if(s) gBookSheet(s);
 });
+
+/* ---------- studio rental ---------- */
+let R = null, rDay = "", rStart = null, rHrs = 2;
+const RERR = Object.assign({}, GERR, {
+  taken: "Sorry, part of that time was just booked. Please pick another time.",
+  bad_time: "Please pick a valid start time and number of hours.",
+  closed: "That time is too soon to book online. Please message our Facebook page.",
+  too_many: "This mobile number already has 3 upcoming studio rentals. Please message our Facebook page.",
+  bad_details: "Please check your name, mobile number, email, Facebook name and number of people."
+});
+const peso = n => "₱" + (+n||0).toLocaleString("en-PH");
+const hLbl = h => ((h%12)||12) + (h>=12&&h<24?" PM":" AM");
+const hRange = (a,n) => hLbl(a) + " – " + hLbl(a+n);
+const rPrice = n => Math.min(n, R.minHours)*R.hourRate + Math.max(n-R.minHours,0)*R.extRate;
+const rRS = "fwph-rentals";
+const rGet = () => { try{ return JSON.parse(localStorage.getItem(rRS)||"[]"); }catch(e){ return []; } };
+const rSet = v => { try{ localStorage.setItem(rRS, JSON.stringify(v)); }catch(e){} };
+async function loadRent(silent){
+  if(!silent) show("loading");
+  const r = await rpc("fw_rental_availability", {});
+  if(!r.ok){ show("login"); loginErr(ERR.network); return; }
+  R = r;
+  if(!R.days.find(d=>d.date===rDay)) { const f = R.days.find(d=>d.free>=R.minHours) || R.days[0]; rDay = f ? f.date : ""; rStart = null; }
+  renderRent(); show("rent");
+}
+/* the longest run of open hours starting at h */
+function rRun(day, h){ let n=0; for(const x of day.hours){ if(x.h<h) continue; if(x.h!==h+n || x.st!=="free") break; n++; } return n; }
+function renderRent(){
+  $("rRates").innerHTML = `<li><b>${peso(R.hourRate)}/hour</b>, minimum <b>${R.minHours} hours</b> (${peso(R.hourRate*R.minHours)})</li>
+    <li><b>${peso(R.extRate)}</b> for every hour after that</li>
+    <li><b>${peso(R.reserve)} reservation</b> is required to book. It is deducted from your total.</li>
+    <li>Clean, air-conditioned studio with speaker. For dance practice only, not for parties.</li>
+    <li>Open ${hLbl(R.openHour)} – ${hLbl(R.closeHour)}, every day.</li>`;
+  $("rDays").innerHTML = R.days.map(d=>{
+    const dd = dObj(d.date), lbl = d.date===todayISO() ? "Today" : dd.toLocaleDateString("en-PH",{weekday:"short"});
+    const tag = d.free>=R.minHours ? `${d.free} hrs open` : d.free>0 ? "Almost full" : "Full";
+    return `<button class="chip" aria-pressed="${d.date===rDay}" data-rday="${esc(d.date)}">${esc(lbl)} ${esc(dd.toLocaleDateString("en-PH",{month:"short",day:"numeric"}))}<small style="${d.rentedHours?"color:#FF7CC0":""}">${d.rentedHours?`${d.rentedHours} hr${d.rentedHours>1?"s":""} rented · `:""}${tag}</small></button>`;
+  }).join("");
+  const day = R.days.find(d=>d.date===rDay);
+  if(!day){ $("rHours").innerHTML = `<div class="empty card" style="grid-column:1/-1">No days to show yet.</div>`; $("rDaySum").innerHTML=""; $("rPick").innerHTML=""; return; }
+  const rentedBlocks = []; let cur=null;
+  day.hours.forEach(x=>{ if(x.st==="rented"){ if(cur && cur.end===x.h){ cur.end++; } else { cur={start:x.h,end:x.h+1}; rentedBlocks.push(cur); } } });
+  $("rDaySum").innerHTML = `<div class="card" style="margin-top:4px">
+    <div class="day" style="margin:0 0 6px">${esc(dayLabel(day.date))}</div>
+    ${day.rentedHours ? `<p style="margin:0"><span class="pill pink">Rented ${day.rentedHours} hr${day.rentedHours>1?"s":""}</span> ${rentedBlocks.map(b=>esc(hRange(b.start,b.end-b.start))).join(", ")}</p>` : `<p style="margin:0"><span class="pill lime">No studio rental yet</span></p>`}
+    ${day.classHours ? `<p class="small muted" style="margin:6px 0 0">Classes: ${day.classHours} hr${day.classHours>1?"s":""} on the schedule</p>` : ""}
+    <p class="small" style="margin:6px 0 0;color:var(--lime);font-weight:700">${day.free} hour${day.free==1?"":"s"} open for rental</p></div>`;
+  const run = rStart!=null ? rRun(day, rStart) : 0;
+  if(rStart!=null && run < R.minHours) rStart = null;
+  if(rStart!=null) rHrs = Math.max(R.minHours, Math.min(rHrs, run, R.maxHours));
+  $("rHours").innerHTML = day.hours.map(x=>{
+    const inSel = rStart!=null && x.h>=rStart && x.h<rStart+rHrs;
+    const canStart = x.st==="free" && rRun(day, x.h) >= R.minHours;
+    const lab = x.st==="rented" ? "Booked" : x.st==="class" ? "Class" : x.st==="past" ? "Closed" : inSel ? "Yours" : canStart ? "Open" : "Open";
+    return `<button class="hr ${inSel?"sel":x.st}" ${x.st==="free"?`data-rh="${x.h}"`:"disabled"} type="button">${esc(hLbl(x.h))}<small>${lab}</small></button>`;
+  }).join("");
+  if(rStart==null){ $("rPick").innerHTML = `<p class="small muted" style="margin-top:12px">Tap an open time to start. You need at least ${R.minHours} open hours in a row.</p>`; return; }
+  const maxH = Math.min(run, R.maxHours), tot = rPrice(rHrs);
+  $("rPick").innerHTML = `<h2>3. How many hours?</h2>
+    <div class="stepper"><button type="button" data-rstep="-1" ${rHrs<=R.minHours?"disabled":""}>−</button><b>${rHrs} hrs</b><button type="button" data-rstep="1" ${rHrs>=maxH?"disabled":""}>+</button>
+    <span class="small muted">${rHrs>=maxH?(maxH>=R.maxHours?`Max ${R.maxHours} hrs online`:"Next hour is taken"):""}</span></div>
+    <div class="sumbar"><div class="row"><div><div style="font-weight:700;font-size:18px">${esc(dayName(day.date))}, ${esc(hRange(rStart,rHrs))}</div>
+      <div class="small muted">Total ${peso(tot)} · Pay ${peso(R.reserve)} now · Balance ${peso(Math.max(tot-R.reserve,0))} at the studio</div></div></div>
+      <button class="btn pink block" style="margin-top:10px" id="rGo" type="button" ${R.open?"":"disabled"}>${R.open?"Reserve this time":"Online booking is paused"}</button></div>`;
+}
+function rFormSheet(){
+  const day = R.days.find(d=>d.date===rDay), tot = rPrice(rHrs);
+  openSheet(`<h3>Studio rental</h3>
+    <div class="kv"><b>Date</b><span>${esc(dayLabel(day.date))}</span><b>Time</b><span>${esc(hRange(rStart,rHrs))} (${rHrs} hrs)</span>
+      <b>Total</b><span>${peso(tot)} <span class="small muted">(${Math.min(rHrs,R.minHours)} × ${peso(R.hourRate)}${rHrs>R.minHours?` + ${rHrs-R.minHours} × ${peso(R.extRate)}`:""})</span></span>
+      <b>Pay now</b><span><b style="color:var(--lime)">${peso(R.reserve)} reservation</b></span><b>Balance</b><span>${peso(Math.max(tot-R.reserve,0))}, pay at the studio before you start</span></div>
+    <form id="rForm" autocomplete="on">
+      <label for="rName">Full name (person in charge)</label><input type="text" id="rName" maxlength="80" autocomplete="name" required>
+      <label for="rMob">Mobile number</label><input type="tel" id="rMob" inputmode="tel" placeholder="09xx xxx xxxx" autocomplete="tel" required>
+      <label for="rFb">Facebook / Messenger name</label><input type="text" id="rFb" maxlength="80" required>
+      <label for="rEmail">Email</label><input type="email" id="rEmail" inputmode="email" maxlength="120" autocomplete="email" required>
+      <label for="rEmail2">Type your email again</label><input type="email" id="rEmail2" inputmode="email" maxlength="120" autocomplete="off" required>
+      <label for="rPax">How many people? (max 10)</label><input type="text" id="rPax" inputmode="numeric" maxlength="2" placeholder="e.g. 8" required>
+      <label for="rPurpose">What is it for?</label><input type="text" id="rPurpose" maxlength="120" placeholder="e.g. Christmas presentation practice, crew practice">
+      <ul class="rules">
+        <li>Your time is <b>reserved only after you pay the ${peso(R.reserve)} reservation</b> and upload your screenshot. First to pay, first to reserve.</li>
+        <li>The ${peso(R.reserve)} is <b>deducted from your total</b>. Pay the balance at the counter before you start.</li>
+        <li>Members: show your card for <b>₱100 off the first hour</b>.</li>
+        <li>Max <b>10 people</b>. For dance practice only, <b>not for parties</b>.</li>
+        <li>Please start and end on time. Extra time is charged per hour if the studio is free.</li>
+        <li>Reschedule requests must be made <b>at least 24 hours before</b> your rental time.</li>
+        <li>The reservation fee is <b>non-refundable</b> if you cancel or don't show up.</li>
+        <li>Keep the studio clean. You pay for any damage. The studio is not responsible for lost items.</li>
+      </ul>
+      <label class="check" style="margin-top:0;color:var(--ink)"><input type="checkbox" id="rAgree"> I agree to the studio rental rules.</label>
+      <div class="err" id="rErr" hidden></div>
+      <button class="btn pink block" id="rNext" type="submit">Next: Pay reservation</button>
+    </form>
+    <button class="btn ghost block" style="margin-top:10px" data-close>Not now</button>`);
+  $("rForm").onsubmit = e=>{
+    e.preventDefault();
+    const err = t => { $("rErr").textContent=t; $("rErr").hidden=false; };
+    const d = {name:$("rName").value.trim(), mob:$("rMob").value.trim(), fb:$("rFb").value.trim(), em:$("rEmail").value.trim(), pax:parseInt($("rPax").value,10), purpose:$("rPurpose").value.trim()};
+    if(d.name.length<2) return err("Please type your full name.");
+    if(d.mob.replace(/\D/g,"").length<10) return err("Please type your full mobile number.");
+    if(d.fb.length<2) return err("Please type your Facebook or Messenger name.");
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.em)) return err("Please type a valid email.");
+    if(d.em.toLowerCase()!==$("rEmail2").value.trim().toLowerCase()) return err("Your 2 emails don't match. Please double-check your email.");
+    if(!(d.pax>=1 && d.pax<=10)) return err("Please type how many people (1 to 10).");
+    if(!$("rAgree").checked) return err("Please tick the box to agree to the studio rental rules.");
+    rPaySheet(d);
+  };
+}
+function rPaySheet(d){
+  const tot = rPrice(rHrs), date = rDay, start = rStart, hrs = rHrs;
+  openSheet(`<p class="small" style="margin:0 0 4px;color:var(--warn);font-weight:700">STEP 2 OF 2 · NOT RESERVED YET</p>
+    <h3>Pay ${peso(R.reserve)} to reserve</h3>
+    <p class="muted">${esc(dayLabel(date))} · ${esc(hRange(start,hrs))}</p>
+    <div class="rules" style="border-color:var(--pink)">
+      <div style="font-weight:700;margin-bottom:6px">Pay via GCash or Maya</div>
+      <div style="font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;font-weight:900;font-style:italic;font-size:30px;color:var(--lime);line-height:1">${esc(R.payNumber)}</div>
+      <div>Account name: <b>${esc(R.payName)}</b></div>
+      <div style="margin-top:6px">Amount: <b style="color:var(--lime)">${peso(R.reserve)}</b> reservation</div>
+      <button class="btn ghost sm" id="rCopy" type="button" style="margin-top:8px">Copy number</button>
+    </div>
+    <label for="rpRef">GCash / Maya reference no. (optional)</label>
+    <input type="text" id="rpRef" maxlength="60" placeholder="e.g. 1234 567 890123" inputmode="numeric">
+    <label>Screenshot of your payment</label>
+    <label class="file"><input type="file" id="rpFile" accept="image/*,application/pdf"><span>📎</span><span id="rpFileName">Tap to choose a photo</span></label>
+    <div class="err" id="rpErr" hidden></div>
+    <button class="btn pink block" id="rpGo" type="button">Send proof &amp; reserve my time</button>
+    <button class="btn ghost block" style="margin-top:10px" data-close>Cancel</button>`);
+  $("rCopy").onclick = ()=>{ try{ navigator.clipboard.writeText(String(R.payNumber).replace(/\D/g,"")).then(()=>toast("Number copied")); }catch(e){ toast(R.payNumber); } };
+  $("rpFile").onchange = e=>{ const f=e.target.files[0]; $("rpFileName").textContent = f ? f.name : "Tap to choose a photo"; };
+  $("rpGo").onclick = async ()=>{
+    const err = m => { $("rpErr").textContent=m; $("rpErr").hidden=false; $("rpGo").disabled=false; $("rpGo").textContent="Send proof & reserve my time"; };
+    const f = $("rpFile").files[0], refNo = $("rpRef").value.trim();
+    if(!f) return err("Please pay first, then choose your payment screenshot.");
+    $("rpGo").disabled = true; $("rpGo").innerHTML = `<span class="spin"></span>`;
+    const path = await upload(f, R.owner);
+    if(!path) return err("Upload failed. Try a smaller photo, or send it to our Facebook page.");
+    const r = await rpc("fw_rental_book", {p_date:date, p_start:start, p_hours:hrs, p_name:d.name, p_mobile:d.mob, p_email:d.em, p_fb:d.fb, p_purpose:d.purpose||null, p_pax:d.pax, p_pay_ref:refNo||null, p_proof_path:path, p_agreed:true});
+    if(!r.ok){ loadRent(true); return err((RERR[r.error]||ERR.network)+(["taken","closed"].includes(r.error)?" If you already paid, message our Facebook page so we can move or refund it.":"")); }
+    const b = {ref:r.ref, date, start, hours:hrs, name:d.name, mob:d.mob, email:d.em, total:r.total, reserve:r.reserve, balance:r.balance, status:"pending"};
+    rSet([...rGet().filter(x=>x.ref!==b.ref), b]);
+    loadRent(true); rDone(b);
+  };
+}
+function rDone(b){
+  const st = b.status==="confirmed" ? `<span class="pill lime">Confirmed ✓</span>` : b.status==="declined"||b.status==="cancelled" ? `<span class="pill bad">${b.status==="declined"?"Not approved":"Cancelled"}</span>` : `<span class="pill warn">Checking your payment</span>`;
+  openSheet(`<p class="small" style="margin:0 0 4px;color:var(--lime);font-weight:700">📸 SCREENSHOT THIS PAGE</p>
+    <h3>Studio rental ${b.status==="confirmed"?"confirmed!":"request sent!"}</h3>
+    <div class="kv"><b>Ref</b><span class="ref" style="font-size:28px">${esc(b.ref)}</span><b>Name</b><span>${esc(b.name)}</span>
+      <b>Date</b><span>${esc(dayLabel(b.date))}</span><b>Time</b><span>${esc(hRange(b.start,b.hours))} (${b.hours} hrs)</span>
+      <b>Total</b><span>${peso(b.total)}</span><b>Paid</b><span>${peso(b.reserve)} reservation</span><b>Balance</b><span><b>${peso(b.balance)}</b> at the studio</span><b>Status</b><span>${st}</span></div>
+    <ul class="rules">
+      <li>We'll check your payment and confirm your rental. We'll message you on Messenger or text.</li>
+      <li>Pay the balance at the counter <b>before you start</b>.</li>
+      <li>Come on time. Your rental ends on time so the next group can start.</li>
+    </ul>
+    <button class="btn block" style="margin-top:6px" data-close>Done</button>`);
+}
+function rStatusSheet(){
+  const mine = rGet().filter(b=>b.date>=todayISO());
+  openSheet(`<h3>Check my rental booking</h3>
+    ${mine.map(b=>`<button class="btn ghost block" style="margin:0 0 8px;justify-content:space-between" data-rshow="${esc(b.ref)}"><span>${esc(b.ref)} · ${esc(dObj(b.date).toLocaleDateString("en-PH",{month:"short",day:"numeric"}))}, ${esc(hRange(b.start,b.hours))}</span><span>›</span></button>`).join("")}
+    <label for="rsRef">Rental ref</label><input type="text" id="rsRef" maxlength="20" placeholder="RN-XXXXXX" autocapitalize="characters">
+    <label for="rsMob">Mobile number</label><input type="tel" id="rsMob" inputmode="tel" placeholder="09xx xxx xxxx">
+    <div class="err" id="rsErr" hidden></div>
+    <button class="btn pink block" id="rsGo" type="button">Check status</button>
+    <button class="btn ghost block" style="margin-top:10px" data-close>Close</button>`);
+  $("rsGo").onclick = ()=> rCheck($("rsRef").value.trim().toUpperCase(), $("rsMob").value.trim());
+}
+async function rCheck(ref, mob){
+  const err = m=>{ if($("rsErr")){ $("rsErr").textContent=m; $("rsErr").hidden=false; } else toast(m); };
+  if(!/^RN-?[A-Z0-9]{4,}$/.test(ref||"")) return err("Please type your rental ref (example: RN-A307FE).");
+  if(String(mob||"").replace(/\D/g,"").length<10) return err("Please type the mobile number you booked with.");
+  const r = await rpc("fw_rental_status", {p_ref:ref, p_mobile:mob});
+  if(!r.ok) return err(r.error==="no_booking" ? "We couldn't find that rental ref with that mobile number." : ERR.network);
+  const b = {ref:r.ref, date:r.date, start:r.start, hours:r.hours, name:r.name, mob, total:r.total, reserve:r.reserve, balance:r.balance, status:r.status};
+  const list = rGet(); if(list.find(x=>x.ref===b.ref)) rSet(list.map(x=>x.ref===b.ref?Object.assign(x,b):x));
+  rDone(b);
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-rday],[data-rh],[data-rstep],#rGo,[data-rshow]"); if(!b || !R) return;
+  if(b.dataset.rshow){ const x = rGet().find(y=>y.ref===b.dataset.rshow); if(x) rCheck(x.ref, x.mob); return; }
+  if(b.id==="rGo"){ rFormSheet(); return; }
+  if(b.dataset.rday){ rDay=b.dataset.rday; rStart=null; rHrs=R.minHours; renderRent(); return; }
+  if(b.dataset.rstep){ rHrs += +b.dataset.rstep; renderRent(); return; }
+  if(b.dataset.rh){ const h=+b.dataset.rh, day=R.days.find(d=>d.date===rDay);
+    if(rStart!=null && h>=rStart && h<rStart+rHrs && h!==rStart){ rHrs = h-rStart+1; renderRent(); return; }
+    if(rRun(day,h) < R.minHours){ toast(`Pick a time with at least ${R.minHours} open hours in a row.`); return; }
+    rStart=h; rHrs=R.minHours; renderRent(); }
+});
+$("rentBtn").onclick = ()=>{ history.replaceState(null,"","#rent"); loadRent(); };
+$("rBack").onclick = ()=>{ history.replaceState(null,"",location.pathname); show("login"); };
+$("rStatusBtn").onclick = rStatusSheet;
 $("guestBtn").onclick = ()=>{ history.replaceState(null,"","#guest"); loadGuest(); };
 $("gBack").onclick = ()=>{ history.replaceState(null,"",location.pathname); show("login"); };
 $("outBtn").onclick = ()=>{ cred=null; data=null; lsSet(null); $("mob").value=""; show("login"); };
 $("refreshBtn").onclick = ()=>{ load(true).then(()=>toast("Schedule updated")); };
-document.addEventListener("visibilitychange", ()=>{ if(document.hidden) return; if(!$("guest").hidden && G) loadGuest(true); else if(cred && data) load(true); });
+document.addEventListener("visibilitychange", ()=>{ if(document.hidden) return; if(!$("rent").hidden && R && !$("dlg").classList.contains("show")) loadRent(true); else if(!$("guest").hidden && G) loadGuest(true); else if(cred && data) load(true); });
 
 cred = lsGet();
 if(location.hash==="#guest") loadGuest();
+else if(location.hash==="#rent") loadRent();
 else if(cred && cred.no && cred.mob){ $("mno").value = cred.no; load(); } else show("login");
 </script>
 </body>

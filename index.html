@@ -819,9 +819,74 @@ async function loadBookings(){
     if(r.error) return;
     const before = JSON.stringify(BK)+JSON.stringify(BKX); BK = r.data||[];
     await loadCancelled();
-    if(JSON.stringify(BK)+JSON.stringify(BKX)!==before && !dlg.open) render();
+    const rqBefore = JSON.stringify(RQ); await loadRentReq();
+    if((JSON.stringify(BK)+JSON.stringify(BKX)!==before || JSON.stringify(RQ)!==rqBefore) && !dlg.open) render();
   }catch(e){}
 }
+/* ---------- online studio rental requests (booking link #rent) ---------- */
+let RQ = [];
+async function loadRentReq(){
+  try{
+    const r = await sb.from("fw_rental_requests").select("id,ref,rent_date,start_hour,hours,name,contact,email,fb,purpose,pax,total,reservation,pay_ref,proof_path,status,rental_id,created_at")
+      .eq("status","pending").gte("rent_date", addDays(todayISO(),-1)).order("rent_date").order("start_hour");
+    if(!r.error) RQ = r.data||[];
+  }catch(e){}
+}
+const rqHH = h => String(h).padStart(2,"0")+":00";
+const rqWhen = q => `${fmtDate(q.rent_date)} · ${fmtTime(rqHH(q.start_hour))}–${fmtTime(rqHH(q.start_hour+q.hours))}`;
+async function rqProof(id){
+  const q = RQ.find(x=>x.id===id); if(!q||!q.proof_path) return;
+  const w = window.open("", "_blank");
+  const r = await sb.storage.from("fw-booking-proofs").createSignedUrl(q.proof_path, 600);
+  if(r.error || !r.data){ if(w) w.close(); toast("Couldn't open the proof."); return; }
+  if(w) w.location = r.data.signedUrl; else location.href = r.data.signedUrl;
+}
+function rqMsg(q, ok){
+  const bal = Math.max((+q.total||0)-(+q.reservation||0),0);
+  return ok ? `Hi ${q.name.split(" ")[0]}! Your Footwork PH studio rental is CONFIRMED ✅\n\nRef: ${q.ref}\nWhen: ${rqWhen(q)} (${q.hours} hrs)\nTotal: ${peso(q.total)}\nReservation paid: ${peso(q.reservation)}\nBalance: ${peso(bal)} — please pay at the counter before you start.\n\nPlease come on time. Max 10 people. For dance practice only.\n📍 Footwork PH Studio, JRMD Bldg, Barrio Rd, Tayuman, Binangonan, Rizal (beside Alfamart)\n\nSee you! 💖`
+    : `Hi ${q.name.split(" ")[0]}! Sorry, we can't confirm your studio rental request (${q.ref}) for ${rqWhen(q)}. Please message us so we can move you to another time or return your reservation. Thank you!`;
+}
+async function rqConfirm(id){
+  const q = RQ.find(x=>x.id===id); if(!q) return;
+  if(!confirm(`Confirm ${q.name}'s studio rental on ${rqWhen(q)}?\n\nMake sure the ${peso(q.reservation)} reservation is in your GCash/Maya.`)) return;
+  const st = S.settings.rental, base = Math.min(q.hours, 2), bal = Math.max((+q.total||0)-(+q.reservation||0),0);
+  const x = {id:uid(), date:q.rent_date, time:rqHH(q.start_hour), renter:q.name, contact:q.contact, purpose:q.purpose||"", hours:base, extHours:Math.max(q.hours-base,0),
+    amount:(base*st.hour + Math.max(q.hours-base,0)*st.extHour)===+q.total ? "" : +q.total, status:"pending", rqId:q.id,
+    notes:`Online ${q.ref} · ${q.pax||"?"} pax · FB: ${q.fb||""} · ₱${q.reservation} reservation PAID${q.pay_ref?" (ref "+q.pay_ref+")":""} · Balance ${peso(bal)} at studio`};
+  S.rentals.push(x); save();
+  const r = await sb.from("fw_rental_requests").update({status:"confirmed", rental_id:x.id, updated_at:new Date().toISOString()}).eq("id", q.id);
+  if(r.error){ toast("Saved in Rental, but couldn't update the online request. Try again."); return; }
+  RQ = RQ.filter(y=>y.id!==q.id);
+  let mailed = false;
+  if(q.email && EMAIL_RX.test(q.email) && mailReady()){
+    try{ const m = await mailPost({to:[q.email], subject:`Studio rental confirmed: ${rqWhen(q)} · Footwork PH`, html:esc(rqMsg(q,true)).replace(/\n/g,"<br>"), text:rqMsg(q,true)}); mailed = !!(m&&m.ok); }catch(e){}
+  }
+  copyText(rqMsg(q,true), mailed ? "Confirmed & emailed. Message copied for Messenger too." : "Confirmed. Message copied. Paste it in Messenger.");
+  render();
+}
+async function rqDecline(id){
+  const q = RQ.find(x=>x.id===id); if(!q) return;
+  if(!confirm(`Decline ${q.name}'s rental request for ${rqWhen(q)}? The time opens up for others.\n\nRemember to message them about their ${peso(q.reservation)} reservation.`)) return;
+  const r = await sb.from("fw_rental_requests").update({status:"declined", updated_at:new Date().toISOString()}).eq("id", q.id);
+  if(r.error){ toast("Couldn't update. Try again."); return; }
+  RQ = RQ.filter(y=>y.id!==q.id);
+  copyText(rqMsg(q,false), "Declined. Message copied. Paste it in Messenger."); render();
+}
+function rqCards(){
+  if(!RQ.length) return "";
+  return `<div class="card" style="border:2px solid var(--pink)"><h3 style="margin-bottom:4px">🏠 Online rental requests (${RQ.length})</h3>
+    <p class="small muted" style="margin:0 0 8px">From the booking link. Check the ₱ reservation in GCash/Maya, then confirm. Confirmed requests move to the list below.</p>
+    ${RQ.map(q=>`<div style="border-top:1px solid var(--line);padding:10px 0">
+      <div class="row between"><b>${esc(rqWhen(q))}</b><b class="money">${peso(q.total)}</b></div>
+      <p class="small" style="margin:4px 0 0"><b>${esc(q.name)}</b> · FB: <b style="color:var(--pink)">${esc(q.fb||"")}</b> · <a href="tel:${esc(q.contact)}">${esc(q.contact)}</a>${q.pax?` · ${q.pax} pax`:""}${q.purpose?` · ${esc(q.purpose)}`:""}</p>
+      <p class="small muted" style="margin:2px 0 0">${esc(q.ref)} · ${q.hours} hrs · Reservation ${peso(q.reservation)}${q.pay_ref?` (ref ${esc(q.pay_ref)})`:""} · Balance ${peso(Math.max(q.total-q.reservation,0))}</p>
+      <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
+        ${q.proof_path?`<button class="btn sm ghost" data-act="rqProof" data-id="${q.id}">View proof</button>`:""}
+        <button class="btn sm" data-act="rqConfirm" data-id="${q.id}">Paid · Confirm</button>
+        <button class="btn sm danger" data-act="rqDecline" data-id="${q.id}">Decline</button></div></div>`).join("")}</div>`;
+}
+const RENT_LINK = new URL("book/#rent", location.origin + location.pathname.replace(/[^/]*$/, "")).href;
+
 /* ---------- cancelled classes: students affected, and what happened (rescheduled / refunded / credit) ---------- */
 let BKX = [];
 async function loadCancelled(){
@@ -2988,6 +3053,8 @@ function vRental(){
   const hrs=list.filter(x=>x.status!=="cancelled").reduce((a,x)=>a+(+x.hours||0)+(+x.extHours||0),0);
   return `<div class="row between" style="margin-bottom:12px"><h2>Studio rental</h2><button class="btn" data-act="newRental">Add booking</button></div>
   <p class="small muted" style="margin:-4px 0 12px">${peso(st.hour)}/hour · extended hours ${peso(st.extHour)}/hour <button class="linkbtn small" data-go="settings">Edit rates</button></p>
+  <p class="small muted" style="margin:-6px 0 12px">Online rental booking: <button class="linkbtn small" data-act="copyRentLink">Copy link</button> <span class="muted">${esc(RENT_LINK)}</span></p>
+  ${rqCards()}
   ${periodBar()}
   <div class="card"><div class="kpis" style="margin-top:0">
     <div class="kpi"><span>Paid (counted as income)</span><b class="money" style="color:var(--good)">${peso(paid)}</b></div>
@@ -3742,7 +3809,7 @@ function rentalDlg(x){
       if(isNew) S.rentals.push(x); else S.rentals[S.rentals.findIndex(y=>y.id===x.id)]=x;
       toast(isNew?"Booking added":"Booking saved");
     },
-    onDelete: isNew?null:()=>{ S.rentals=S.rentals.filter(y=>y.id!==x.id); } });
+    onDelete: isNew?null:()=>{ S.rentals=S.rentals.filter(y=>y.id!==x.id); if(x.rqId && sb && sbUser) sb.from("fw_rental_requests").update({status:"cancelled", updated_at:new Date().toISOString()}).eq("id", x.rqId).then(r=>{ if(r.error) console.warn(r.error); }); } });
   const calc=()=>{ const h=+val("r_hours")||0, e=+val("r_ext")||0, t=val("r_time"); const auto=h*st.hour+e*st.extHour;
     document.getElementById("r_calc").innerHTML = `Auto total: <b>${peso(auto)}</b>${t?` · ends ${fmtTime(addHours(t,h+e))}`:""}. Type a total above to give a discount.`; };
   ["r_hours","r_ext","r_time"].forEach(id=>document.getElementById(id).oninput=calc); calc();
@@ -3897,6 +3964,10 @@ function handleAct(b){
   else if(a==="cxCopy"){ const x=BKX.find(y=>y.id===id); if(x) copyText(lowCancelText(Object.assign({},x,{status:cxPaid(x)?"confirmed":"cancelled"})),"Message copied. Paste it in Messenger."); }
   else if(a==="cxProof") bkProof(id);
   else if(a==="bkProof") bkProof(id);
+  else if(a==="rqProof") rqProof(id);
+  else if(a==="rqConfirm") rqConfirm(id);
+  else if(a==="rqDecline") rqDecline(id);
+  else if(a==="copyRentLink") copyText(RENT_LINK, "Rental booking link copied");
   else if(a==="bkSheet") printSheet(id);
   else if(a==="bkCopy") copyText(BOOK_URL,"Booking link copied");
   else if(a==="bkRefresh") loadBookings().then(()=>{ render(); toast("Bookings updated"); });
