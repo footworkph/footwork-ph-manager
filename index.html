@@ -916,8 +916,11 @@ function cancelledCard(){
   if(!sbUser || !BKX.length) return "";
   /* group by the ORIGINAL class: for rescheduled rows the old class is saved in the resolution */
   const key = b => cxKind(b)==="rescheduled" ? cxFrom(b) : (b.class_name||"Class")+" · "+bkWhen(b);
-  const groups = {}; BKX.forEach(b=>{ (groups[key(b)] = groups[key(b)]||[]).push(b); });
-  const openN = BKX.filter(cxOpen).length;
+  /* finished rows (rescheduled, refunded, credit, closed, or unpaid = nothing to do) are hidden unless "Show finished" is on */
+  const openN = BKX.filter(cxOpen).length, doneN = BKX.length - openN, showAll = !!window.fwCxAll;
+  if(!openN && !showAll) return doneN ? `<p class="small muted" style="margin:0 0 12px">✅ Cancelled classes: all handled. <button type="button" class="linkbtn small" data-act="cxAll">Show ${doneN} finished</button></p>` : "";
+  const shown = showAll ? BKX : BKX.filter(cxOpen);
+  const groups = {}; shown.forEach(b=>{ (groups[key(b)] = groups[key(b)]||[]).push(b); });
   const row = b => { const k=cxKind(b); return `<li><div class="row between"><div style="min-width:0"><b>${esc(b.name)}</b> ${b.is_member?`<span class="pill pink">${esc(b.member_no||"")}</span>`:bkFreeGuest(b)?bkFreeTag(b):`<span class="pill">Guest</span>`}
      <div class="small muted">${esc(b.contact||"No number")}${bkEmailOf(b)?" · "+esc(bkEmailOf(b)):" · No email"}</div>
      <div class="small muted">Ref ${esc(b.ref)}${b.pay_ref?` · Pay ref ${esc(b.pay_ref)}`:""}${b.paid_at?` · Paid ${esc(bkStamp(b.paid_at))}`:""}${b.cancel_mail_status?` · Email ${esc(b.cancel_mail_status)}`:""}</div>
@@ -928,7 +931,8 @@ function cancelledCard(){
     return `<details style="margin-top:8px"${n?" open":""}><summary class="small"><b>${esc(g)}</b> · ${list.length} student${list.length===1?"":"s"}${n?` <span class="pill bad">${n} to fix</span>`:` <span class="pill ok">Done</span>`}</summary><ul class="list">${list.map(row).join("")}</ul></details>`; });
   return `<div class="card"><details${window.fwCxOpen||openN?" open":""} ontoggle="window.fwCxOpen=this.open"><summary style="cursor:pointer"><h3 style="margin:0;display:inline">Cancelled classes</h3>${openN?` <span class="pill bad">${openN} to fix</span>`:""}</summary>
     <p class="small muted" style="margin:6px 0 4px">Students whose class the studio cancelled (last 45 days). Paid students need one of: <b>Reschedule</b>, <b>Mark refunded</b>, or <b>Class credit</b>. Reschedule moves their booking to the new class as paid. No need to pay again.</p>
-    ${blocks.join("")}</details></div>`;
+    ${blocks.join("")}
+    ${doneN?`<p class="small muted" style="margin:10px 0 0">${showAll?`Showing ${doneN} finished.`:`${doneN} finished hidden (rescheduled, refunded, credit, closed or not paid).`} <button type="button" class="linkbtn small" data-act="cxAll">${showAll?"Hide finished":"Show finished"}</button></p>`:""}</details></div>`;
 }
 async function cxSet(b, patch, msg){
   const r = await sb.from("fw_bookings").update(Object.assign({updated_at:new Date().toISOString()}, patch)).eq("id", b.id);
@@ -3983,6 +3987,7 @@ function handleAct(b){
     if(confirm(`Undo “${cxKind(x)}” for ${x.name}?`)) cxSet(x,{resolution:null, resolved_at:null},"Undone"); }
   else if(a==="cxCopy"){ const x=BKX.find(y=>y.id===id); if(x) copyText(lowCancelText(Object.assign({},x,{status:cxPaid(x)?"confirmed":"cancelled"})),"Message copied. Paste it in Messenger."); }
   else if(a==="cxProof") bkProof(id);
+  else if(a==="cxAll"){ window.fwCxAll = !window.fwCxAll; render(); }
   else if(a==="bkProof") bkProof(id);
   else if(a==="rqProof") rqProof(id);
   else if(a==="rqConfirm") rqConfirm(id);
