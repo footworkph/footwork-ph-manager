@@ -2503,6 +2503,46 @@ async function mailPost(payload){
 }
 /* ---------- announcement: email any message to members, non-members and online bookers ---------- */
 const ANN_TEMPLATES = [
+ { id:"perks", label:"Free guest + member perks", members:true,
+  subject: "Bring a Friend FREE + Get the Most From Your Membership",
+  body: `Hi Footwork member! 💖
+
+Your membership comes with 1 FREE GUEST. Here's how to book your friend:
+
+HOW TO BOOK YOUR FREE GUEST
+1. Tap BOOK A CLASS below.
+2. Log in with the Member ID on your card and the mobile number you registered with.
+3. Book YOUR OWN slot in a class first.
+4. On that same class, tap "🎟️ Add free guest".
+5. Type your friend's full name, mobile number and Facebook name, then tap Add free guest.
+6. Your friend signs a short waiver at the counter before class.
+
+Free guest rules:
+• 1 free guest per membership, one time only. You get a new one when you renew.
+• Your friend joins the same class as you. It can't be moved to another day.
+• Use your friend's own mobile number, not yours.
+
+GET THE MOST FROM YOUR MEMBERSHIP
+• ₱50 off every session, all classes.
+• Earn 1 point per visit. 10 points = 1 FREE session.
+• FREE class on your birthday week.
+• Priority booking: book your slot ahead of non-members.
+• ₱100 off studio rental (first hour).
+• 10% off Footwork PH workout gear (shirts, headbands, wristbands) and ₱50 off step boards.
+• You get the class schedule first in our Viber community.
+
+✅ Always show your membership card at the counter. No card, no points, no discount.
+✅ Book in advance. Classes are by appointment only.
+
+MEMBER RATES
+• Until Nov 30: ₱150 per session (Zumba ₱100)
+• From Dec 1: ₱200 per session (Zumba ₱100)
+• December packages for members: 5 sessions ₱900 · 10 sessions ₱1,600 · Holiday Unli ₱2,000 (Unli sales end Dec 7)
+
+Questions? Message us on Facebook: Footwork PH, or call 0933 855 2646 / 0919 002 6419.
+
+See you at the studio!`
+ },
  { id:"dec", label:"December Promo 2026", members:true,
   subject: "December Promo: New Rates + Holiday Packages",
   body: `Hi Footwork fam! 🎄
