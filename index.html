@@ -520,6 +520,12 @@ function seedRatesV7(st){
   st.rates.member.promo = 150;
   st.ratesV7 = true;
 }
+/* one-time (Nov 28, 2026): lower 5/10-session packages and the Gift Pass so they beat the ₱200 / ₱150 promo (packages already sold keep what was paid) */
+function seedPackagesV8(st){
+  const set = (seed, price) => { const p=(st.plans||[]).find(x=>x.seed===seed); if(p) p.price = price; };
+  set("d5_non",900); set("d10_non",1700); set("d5_mem",650); set("d10_mem",1200); set("gift5",900);
+  st.packagesV8 = true;
+}
 function normalize(d){
   d = d || {};
   const o = {};
@@ -540,6 +546,7 @@ function normalize(d){
   if(!st.passesV6) seedPassesV6(st);
   if(!st.ratesV5){ st.rates.nonMember.promo = 200; st.rates.nonMember.promoEnds = "2026-11-21"; st.ratesV5 = true; }
   if(!st.ratesV7) seedRatesV7(st);
+  if(!st.packagesV8) seedPackagesV8(st);
   if(!st.cap9){ st.capacity = 9; st.cap9 = true; }
   st.instructors = (st.instructors||[]).map(i=>Object.assign({pct:"",min:"",contact:"",notes:"",types:[]},i));
   st.mail = Object.assign({url:"", key:"", sent:{}}, ds.mail||{}); if(!st.mail.sent || typeof st.mail.sent!=="object") st.mail.sent = {};
@@ -2543,9 +2550,9 @@ GET THE MOST FROM YOUR MEMBERSHIP
 ✅ Book in advance. Classes are by appointment only.
 
 MEMBER RATES
-• Until Nov 30: ₱150 per session (Zumba ₱100)
-• From Dec 1: ₱200 per session (Zumba ₱100)
-• December packages for members: 5 sessions ₱900 · 10 sessions ₱1,600 · Holiday Unli ₱2,000 (Unli sales end Dec 7)
+• Promo until Dec 31: ₱150 per session (Zumba ₱100)
+• From Jan 1, 2027: ₱200 per session (Zumba ₱100)
+• December packages for members: 5 sessions ₱650 · 10 sessions ₱1,200 · Holiday Unli ₱2,000 (Unli sales end Dec 7)
 
 Questions? Message us on Facebook: Footwork PH, or call 0933 855 2646 / 0919 002 6419.
 
@@ -2562,8 +2569,8 @@ PROMO RATES PER SESSION (until Dec 31)
 • Zumba: ₱150 non-member / ₱100 member
 
 HOLIDAY PACKAGES (save more when you book more)
-• 5 Sessions, use within 15 days: ₱1,100 non-member / ₱900 member
-• 10 Sessions, valid Dec 1 to 30: ₱2,000 non-member / ₱1,600 member
+• 5 Sessions, use within 15 days: ₱900 non-member / ₱650 member
+• 10 Sessions, valid Dec 1 to 30: ₱1,700 non-member / ₱1,200 member
 • UNLI Holiday December, all classes, Dec 1 to 31, up to 2 classes a day: ₱2,500 non-member / ₱2,000 member
 
 🔥 GRAB YOUR UNLI PASS EARLY! Unli December Pass sales end on December 7, 2026.
