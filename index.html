@@ -513,6 +513,13 @@ function seedPassesV6(st){
   if(!isSet(st.unliCoachPay)) st.unliCoachPay = 75;
   st.passesV6 = true;
 }
+/* one-time (Nov 28, 2026): promo is back for everyone until Dec 31 — non-members ₱200, members ₱150 (Zumba stays ₱150 / ₱100) */
+function seedRatesV7(st){
+  st.promo = Object.assign(st.promo||{}, {active:true, ends:"2026-12-31"});
+  st.rates.nonMember.promo = 200; st.rates.nonMember.promoEnds = "";
+  st.rates.member.promo = 150;
+  st.ratesV7 = true;
+}
 function normalize(d){
   d = d || {};
   const o = {};
@@ -532,6 +539,7 @@ function normalize(d){
   if(!st.ratesV4) seedRatesV4(st);
   if(!st.passesV6) seedPassesV6(st);
   if(!st.ratesV5){ st.rates.nonMember.promo = 200; st.rates.nonMember.promoEnds = "2026-11-21"; st.ratesV5 = true; }
+  if(!st.ratesV7) seedRatesV7(st);
   if(!st.cap9){ st.capacity = 9; st.cap9 = true; }
   st.instructors = (st.instructors||[]).map(i=>Object.assign({pct:"",min:"",contact:"",notes:"",types:[]},i));
   st.mail = Object.assign({url:"", key:"", sent:{}}, ds.mail||{}); if(!st.mail.sent || typeof st.mail.sent!=="object") st.mail.sent = {};
@@ -1467,8 +1475,8 @@ const CONTRACT_TERMS = [
   "Priority booking, 24 hours ahead of non-members.",
   "Price lock on the member rates in Section 3 while the membership is active. The price lock does not cover promo rates."]],
  ["SESSION RATES",[
-  "Opening promo, Nov. 7 to 30, 2026: ₱150 per session for members (Zumba ₱100).",
-  "From December 1, 2026, member / non-member rates per session: Aero Step Dance, Open Choreography, Kids Dance, and Femme Dance ₱200 / ₱250; Zumba ₱100 / ₱150."]],
+  "Promo until Dec. 31, 2026: ₱150 per session for members, ₱200 for non-members (Zumba ₱100 / ₱150).",
+  "From January 1, 2027, member / non-member rates per session: Aero Step Dance, Open Choreography, Kids Dance, and Femme Dance ₱200 / ₱250; Zumba ₱100 / ₱150."]],
  ["BOOKING AND CARD RULES",[
   "Book at least 1 hour before the session.",
   "Paid bookings are non-refundable and non-transferable. No-show forfeits the slot and payment.",
@@ -1707,8 +1715,8 @@ function consentPages(d){
   const terms = [
     fwdSec(++n,"PERMISSION TO JOIN",k++,["I allow my child to join Footwork PH dance classes. Classes are by appointment only, and I follow the Studio's booking and payment rules."]),
     fwdSec(++n,"RATES AND BOOKING",k++,[],[
-      "Promo until Nov. 30, 2026: members ₱150 per session (Zumba ₱100). Non-members ₱200 until Nov. 21 (Zumba ₱150).",
-      "From December 1, 2026, member / non-member rates per session: Kids Dance and all other classes ₱200 / ₱250; Zumba ₱100 / ₱150.",
+      "Promo until Dec. 31, 2026: members ₱150 per session (Zumba ₱100). Non-members ₱200 (Zumba ₱150).",
+      "From January 1, 2027, member / non-member rates per session: Kids Dance and all other classes ₱200 / ₱250; Zumba ₱100 / ₱150.",
       "Paid bookings are non-refundable and non-transferable. A no-show forfeits the slot and payment. Reschedule requests need at least 24 hours' notice."]),
     fwdSec(++n,"HEALTH AND FITNESS",k++,[],[
       "My child is healthy and fit to join dance and fitness activities.",
@@ -2549,8 +2557,8 @@ See you at the studio!`
 
 Our DECEMBER PROMO starts December 1, 2026!
 
-RATES PER SESSION (starting Dec 1)
-• All classes (Aero Step, Hip Hop, K-Pop, Femme, Kids Dance): ₱250 non-member / ₱200 member
+PROMO RATES PER SESSION (until Dec 31)
+• All classes (Aero Step, Hip Hop, K-Pop, Femme, Kids Dance): ₱200 non-member / ₱150 member
 • Zumba: ₱150 non-member / ₱100 member
 
 HOLIDAY PACKAGES (save more when you book more)
